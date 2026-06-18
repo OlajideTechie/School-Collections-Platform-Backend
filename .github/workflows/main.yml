@@ -34,4 +34,4 @@ jobs:
           DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/unused_db"
 
       - name: Verify Docker Build
-        run: docker build -t school-collections-backend
+        run: docker build -t school-collections-backend .
