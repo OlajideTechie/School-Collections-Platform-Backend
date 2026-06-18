@@ -1,0 +1,208 @@
+# 🎓 School Collections Platform
+
+A backend service that enables schools to collect tuition and other school-related payments through flexible installment plans powered by ALATPay.
+
+---
+
+## 🚀 Project Overview
+
+The School Collections Platform helps schools manage fee collections while giving parents the flexibility to pay in installments.
+
+Instead of requiring one-time payments, schools can configure installment plans, generate payment links, receive real-time payment updates via ALATPay webhooks, and automatically notify parents through WhatsApp.
+
+---
+
+## ✨ Features
+
+### MVP
+
+- Student Management
+- Collection Plan Management
+- Installment Generation
+- ALATPay Payment Integration
+- Webhook Processing
+- Payment Tracking
+- Dashboard APIs
+- WhatsApp Notifications
+
+---
+
+## 🚧 Future Features
+
+- Multi-school (Multi-tenant)
+- Parent Portal
+- School Configuration
+- Analytics Dashboard
+- PTA Payments
+- Hostel Payments
+- Excursion Payments
+- Transport Payments
+- Accounting Integrations
+
+---
+
+## 🛠 Tech Stack
+
+Backend
+
+- Node.js
+- Express.js
+- TypeScript
+
+Database
+
+- PostgreSQL
+- Prisma ORM
+
+Payments
+
+- ALATPay
+
+Notifications
+
+- WhatsApp Cloud API
+
+Deployment
+
+- Railway
+- Neon PostgreSQL
+
+Documentation
+
+- Swagger
+
+---
+
+## 📂 Project Structure
+```
+src/
+├── config/
+├── integrations/
+├── middleware/
+├── modules/
+├── routes/
+├── shared/
+├── utils/
+├── app.ts
+└── server.ts
+```
+
+---
+
+## 🏗 Architecture
+```
+School
+
+↓
+
+Student
+
+↓
+
+Collection Plan
+
+↓
+
+Installments
+
+↓
+
+Payment
+
+↓
+
+ALATPay
+
+↓
+
+Webhook
+
+↓
+
+Notification
+
+↓
+
+Dashboard
+```
+
+---
+
+## 🚀 Getting Started
+
+Clone the repository
+
+```bash
+git clone <repository-url>
+```
+
+Install dependencies
+
+```bash
+npm install
+```
+
+Create `.env`
+
+```env
+DATABASE_URL=
+PORT=5000
+```
+
+Generate Prisma Client
+
+```bash
+npx prisma generate
+```
+
+Run migrations
+
+```bash
+npx prisma migrate dev
+```
+
+Start development server
+
+```bash
+npm run dev
+```
+
+---
+
+## API
+
+Health Check
+
+```
+GET /health
+```
+
+---
+
+## Deployment
+
+Frontend
+
+- Vercel
+
+Backend
+
+- Railway
+
+Database
+
+- Neon
+
+---
+
+## Team
+
+Backend
+
+Frontend
+
+---
+
+## License
+
+MIT
