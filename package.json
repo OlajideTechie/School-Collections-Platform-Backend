@@ -16,7 +16,7 @@
     "prisma:reset": "prisma migrate reset",
     "prisma:seed": "ts-node prisma/seed.ts",
     "lint": "eslint .",
-    "test": "npm run build && node --test \"test/**/*.test.cjs\""
+    "test": "npm run build && node --test"
   },
   "keywords": [],
   "author": "",
