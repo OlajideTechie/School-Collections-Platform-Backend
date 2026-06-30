@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+ARG DATABASE_URL="postgresql://postgres:postgres@localhost:5432/school_collections"
+ENV DATABASE_URL=$DATABASE_URL
+
 # Copy dependency files and prisma schema first for better caching
 COPY package*.json ./
 COPY prisma ./prisma/
@@ -28,6 +31,6 @@ COPY docker-entrypoint.sh .
 
 RUN chmod +x docker-entrypoint.sh
 
-EXPOSE 3000
+EXPOSE 5000
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
