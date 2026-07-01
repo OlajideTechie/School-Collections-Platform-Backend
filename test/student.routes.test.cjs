@@ -4,7 +4,18 @@ const http = require('node:http');
 
 process.env.NODE_ENV = 'test';
 
-const app = require('../dist/app').default;
+const authMiddleware = require('../dist/middleware/auth.middleware');
+
+authMiddleware.authenticateSchool = (req, res, next) => {
+  req.school = {
+    id: 'sample-school-id',
+    name: 'Sample School',
+    email: 'school@example.com',
+    phone: '08012345678',
+  };
+  next();
+};
+
 const { studentService } = require('../dist/modules/students/student.service');
 
 const originalStudentService = { ...studentService };
@@ -23,6 +34,15 @@ const student = {
 
 beforeEach(() => {
   Object.assign(studentService, originalStudentService);
+  authMiddleware.authenticateSchool = (req, res, next) => {
+    req.school = {
+      id: 'sample-school-id',
+      name: 'Sample School',
+      email: 'school@example.com',
+      phone: '08012345678',
+    };
+    next();
+  };
 });
 
 after(() => {
@@ -30,6 +50,9 @@ after(() => {
 });
 
 function startServer() {
+  delete require.cache[require.resolve('../dist/app')];
+  const app = require('../dist/app').default;
+
   return new Promise((resolve) => {
     const server = http.createServer(app);
 
@@ -77,8 +100,8 @@ async function request(method, path, body) {
 }
 
 test('GET /students returns students', async () => {
-  studentService.getStudents = async (query) => {
-    assert.deepEqual(query, {});
+  studentService.getStudents = async (schoolId) => {
+    assert.equal(schoolId, 'sample-school-id');
     return [student];
   };
 
@@ -88,21 +111,10 @@ test('GET /students returns students', async () => {
   assert.deepEqual(response.body, { success: true, data: [student] });
 });
 
-test('GET /students filters by schoolId', async () => {
-  studentService.getStudents = async (query) => {
-    assert.deepEqual(query, { schoolId: 'sample-school-id' });
-    return [student];
-  };
-
-  const response = await request('GET', '/students?schoolId=sample-school-id');
-
-  assert.equal(response.status, 200);
-  assert.deepEqual(response.body.data, [student]);
-});
-
 test('GET /students/:id returns a student', async () => {
-  studentService.getStudentById = async (id) => {
+  studentService.getStudentById = async (id, schoolId) => {
     assert.equal(id, 'student-1');
+    assert.equal(schoolId, 'sample-school-id');
     return student;
   };
 
@@ -121,9 +133,8 @@ test('GET /students/:id returns 404 when the student does not exist', async () =
   assert.deepEqual(response.body, { success: false, message: 'Student not found.' });
 });
 
-test('POST /students creates a student', async () => {
+test('POST /students creates a student for the authenticated school', async () => {
   const payload = {
-    schoolId: 'sample-school-id',
     firstName: 'Jane',
     lastName: 'Doe',
     parentName: 'John Doe',
@@ -131,8 +142,9 @@ test('POST /students creates a student', async () => {
     parentEmail: 'john.doe@example.com',
   };
 
-  studentService.createStudent = async (studentData) => {
+  studentService.createStudent = async (studentData, schoolId) => {
     assert.deepEqual(studentData, payload);
+    assert.equal(schoolId, 'sample-school-id');
     return student;
   };
 
