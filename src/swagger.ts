@@ -2,6 +2,11 @@ import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import { Express } from 'express';
 
+const isProduction = process.env.NODE_ENV === 'production';
+const apiFiles = isProduction
+  ? ['./dist/routes/*.js', './dist/server.js']
+  : ['./src/routes/*.ts', './src/server.ts'];
+
 const options: swaggerJsdoc.Options = {
   definition: {
     openapi: '3.0.0',
@@ -12,8 +17,8 @@ const options: swaggerJsdoc.Options = {
     },
     servers: [
       {
-        url: 'process.env.API_URL || http://localhost:5000',
-        description: process.env.NODE_ENV === 'production'
+        url: process.env.API_URL || 'http://localhost:5000',
+        description: isProduction
          ? 'Production server' 
          : 'Development server',
       },
@@ -84,7 +89,7 @@ const options: swaggerJsdoc.Options = {
     },
   },
   // Paths to files containing OpenAPI definitions (JSDoc comments)
-  apis: ['./src/routes/*.ts', './src/server.ts'],
+  apis: apiFiles,
 };
 
 const swaggerSpec = swaggerJsdoc(options);
