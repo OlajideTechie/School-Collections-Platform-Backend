@@ -1,11 +1,20 @@
+import path from 'path';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import { Express } from 'express';
 
 const isProduction = process.env.NODE_ENV === 'production';
+const baseDir = process.cwd();
+const normalizeGlob = (filePath: string) => filePath.replace(/\\/g, '/');
 const apiFiles = isProduction
-  ? ['./dist/routes/*.js', './dist/server.js']
-  : ['./src/routes/*.ts', './src/server.ts'];
+  ? [
+      normalizeGlob(path.resolve(baseDir, 'dist', 'routes', '*.js')),
+      normalizeGlob(path.resolve(baseDir, 'dist', 'server.js')),
+    ]
+  : [
+      normalizeGlob(path.resolve(baseDir, 'src', 'routes', '*.ts')),
+      normalizeGlob(path.resolve(baseDir, 'src', 'server.ts')),
+    ];
 
 const options: swaggerJsdoc.Options = {
   definition: {
