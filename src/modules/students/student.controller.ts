@@ -1,8 +1,8 @@
 import { ZodError } from 'zod';
-import { Request, Response } from 'express';
+import { Response } from 'express';
+import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import {
   createStudentSchema,
-  listStudentsQuerySchema,
   studentIdParamSchema,
 } from '../../validation/student.validation';
 import { studentService } from './student.service';
@@ -12,10 +12,14 @@ export const studentController = {
    * Handles the request to fetch student records.
    * Supports optional filtering by schoolId.
    */
-  async getStudents(req: Request, res: Response): Promise<void> {
+  async getStudents(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const query = listStudentsQuerySchema.parse(req.query);
-      const students = await studentService.getStudents(query);
+      const schoolId = req.school?.id;
+      if (!schoolId) {
+        res.status(401).json({ success: false, message: 'Unauthorized.' });
+        return;
+      }
+      const students = await studentService.getStudents(schoolId);
 
       res.status(200).json({ success: true, data: students });
     } catch (error: unknown) {
@@ -32,10 +36,15 @@ export const studentController = {
   /**
    * Handles the request to fetch a single student record.
    */
-  async getStudentById(req: Request, res: Response): Promise<void> {
+  async getStudentById(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = studentIdParamSchema.parse(req.params);
-      const student = await studentService.getStudentById(id);
+      const schoolId = req.school?.id;
+      if (!schoolId) {
+        res.status(401).json({ success: false, message: 'Unauthorized.' });
+        return;
+      }
+      const student = await studentService.getStudentById(id, schoolId);
 
       if (!student) {
         res.status(404).json({ success: false, message: 'Student not found.' });
@@ -58,10 +67,15 @@ export const studentController = {
    * Handles the request to create a new student.
    * Validates input, calls the student service, and sends the response.
    */
-  async createStudent(req: Request, res: Response): Promise<void> {
+  async createStudent(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const studentData = createStudentSchema.parse(req.body);
-      const student = await studentService.createStudent(studentData);
+      const schoolId = req.school?.id;
+      if (!schoolId) {
+        res.status(401).json({ success: false, message: 'Unauthorized.' });
+        return;
+      }
+      const student = await studentService.createStudent(studentData, schoolId);
 
       res.status(201).json({ success: true, data: student });
     } catch (error: unknown) {
@@ -71,6 +85,11 @@ export const studentController = {
       }
 
       if (error instanceof Error && error.message === 'School not found.') {
+        res.status(400).json({ success: false, message: error.message });
+        return;
+      }
+
+      if (error instanceof Error && error.message === 'Parent phone or email already exists.') {
         res.status(400).json({ success: false, message: error.message });
         return;
       }

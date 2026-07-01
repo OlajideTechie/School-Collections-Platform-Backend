@@ -4,6 +4,7 @@ import helmet from "helmet";
 import compression from "compression";
 import morgan from "morgan";
 import studentRouter from "./routes/student.routes";
+import schoolRouter from "./routes/school.routes";
 
 const app = express();
 
@@ -35,5 +36,6 @@ app.get("/health", (_, res) => {
 
 // API Routes
 app.use('/students', studentRouter);
+app.use('/schools', schoolRouter);
 
 export default app;

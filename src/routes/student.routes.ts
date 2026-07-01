@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import { authenticateSchool } from '../middleware/auth.middleware';
 import { studentController } from '../modules/students/student.controller';
 
 const studentRouter = Router();
+studentRouter.use(authenticateSchool);
 
 /**
  * @openapi
@@ -9,14 +11,9 @@ const studentRouter = Router();
  *   get:
  *     tags:
  *       - Students
- *     summary: Get student records
- *     parameters:
- *       - in: query
- *         name: schoolId
- *         schema:
- *           type: string
- *         required: false
- *         description: Filter students by school ID.
+ *     summary: Get student records for the logged-in school
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Students retrieved successfully.
@@ -46,6 +43,8 @@ studentRouter.get('/', studentController.getStudents);
  *     tags:
  *       - Students
  *     summary: Get a student by ID
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -80,6 +79,8 @@ studentRouter.get('/:id', studentController.getStudentById);
  *     tags:
  *       - Students
  *     summary: Create a new student record
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -87,16 +88,11 @@ studentRouter.get('/:id', studentController.getStudentById);
  *           schema:
  *             type: object
  *             required:
- *               - schoolId
  *               - firstName
  *               - lastName
  *               - parentName
  *               - parentPhone
  *             properties:
- *               schoolId:
- *                 type: string
- *                 description: The ID of the school the student belongs to.
- *                 example: "clx000000000000000000000"
  *               firstName:
  *                 type: string
  *                 description: Student's first name.
@@ -112,7 +108,7 @@ studentRouter.get('/:id', studentController.getStudentById);
  *               parentPhone:
  *                 type: string
  *                 description: Phone number of the student's parent/guardian.
- *                 example: "+1234567890"
+ *                 example: "08012345678"
  *               parentEmail:
  *                 type: string
  *                 format: email
