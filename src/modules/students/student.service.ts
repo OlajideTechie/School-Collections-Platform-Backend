@@ -1,35 +1,45 @@
 import prisma from '../../config/database';
-import { CreateStudentInput, ListStudentsQuery } from '../../validation/student.validation';
+import { CreateStudentInput } from '../../validation/student.validation';
 
 export const studentService = {
   /**
    * Creates a new student record in the database.
    * @param studentData - The data for the new student.
+   * @param schoolId - The logged-in school's ID.
    * @returns The created student object.
-   * @throws Error if the school does not exist.
    */
-  async createStudent(studentData: CreateStudentInput) {
-    const school = await prisma.school.findUnique({
-      where: { id: studentData.schoolId },
+  async createStudent(studentData: CreateStudentInput, schoolId: string) {
+    const duplicateParent = await prisma.student.findFirst({
+      where: {
+        OR: [
+          { parentPhone: studentData.parentPhone },
+          studentData.parentEmail ? { parentEmail: studentData.parentEmail } : undefined,
+        ].filter(Boolean) as Array<{ parentPhone?: string; parentEmail?: string }>,
+      },
     });
 
-    if (!school) {
-      throw new Error('School not found.');
+    if (duplicateParent) {
+      throw new Error('Parent phone or email already exists.');
     }
 
-    return prisma.student.create({ data: studentData });
+    return prisma.student.create({
+      data: {
+        ...studentData,
+        schoolId,
+      },
+    });
   },
 
-  async getStudents(query: ListStudentsQuery) {
+  async getStudents(schoolId: string) {
     return prisma.student.findMany({
-      where: query.schoolId ? { schoolId: query.schoolId } : undefined,
+      where: { schoolId },
       orderBy: { createdAt: 'desc' },
     });
   },
 
-  async getStudentById(id: string) {
-    return prisma.student.findUnique({
-      where: { id },
+  async getStudentById(id: string, schoolId: string) {
+    return prisma.student.findFirst({
+      where: { id, schoolId },
     });
   },
 };

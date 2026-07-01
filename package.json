@@ -10,6 +10,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "migration:status": "npx prisma migrate status",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prisma:deploy": "prisma migrate deploy",

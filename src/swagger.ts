@@ -8,11 +8,11 @@ const baseDir = process.cwd();
 const normalizeGlob = (filePath: string) => filePath.replace(/\\/g, '/');
 const apiFiles = isProduction
   ? [
-      normalizeGlob(path.resolve(baseDir, 'dist', 'routes', '*.js')),
+      normalizeGlob(path.resolve(baseDir, 'dist', 'routes', '**', '*.js')),
       normalizeGlob(path.resolve(baseDir, 'dist', 'server.js')),
     ]
   : [
-      normalizeGlob(path.resolve(baseDir, 'src', 'routes', '*.ts')),
+      normalizeGlob(path.resolve(baseDir, 'src', 'routes', '**', '*.ts')),
       normalizeGlob(path.resolve(baseDir, 'src', 'server.ts')),
     ];
 
@@ -49,6 +49,24 @@ const options: swaggerJsdoc.Options = {
             email: { type: 'string', nullable: true },
             phone: { type: 'string', nullable: true },
           },
+        },
+        SchoolInput: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Name of the school.' },
+            email: { type: 'string', format: 'email', nullable: true, description: 'Contact email for the school.' },
+            phone: { type: 'string', nullable: true, description: 'Contact phone number for the school.' },
+            password: { type: 'string', description: 'Password for school login.' },
+          },
+          required: ['name', 'password'],
+        },
+        SchoolLoginInput: {
+          type: 'object',
+          properties: {
+            email: { type: 'string', format: 'email', description: 'School login email.' },
+            password: { type: 'string', description: 'Password for school login.' },
+          },
+          required: ['email', 'password'],
         },
         Student: {
           type: 'object',
