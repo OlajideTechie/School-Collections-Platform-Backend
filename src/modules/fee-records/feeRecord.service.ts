@@ -29,7 +29,8 @@ export const feeRecordService = {
 
       const collectionStartDate = payload.collectionStartDate ? new Date(payload.collectionStartDate) : undefined;
       const collectionDueDate = payload.collectionDueDate ? new Date(payload.collectionDueDate) : undefined;
-
+      
+      // Generate installments based on the total amount, installment count, and collection dates
       const installmentsToCreate = InstallmentGeneratorService.generate(
         payload.totalAmount,
         payload.installmentCount,
@@ -37,7 +38,7 @@ export const feeRecordService = {
         collectionDueDate,
       ).map((it) => ({
         feeRecordId: feeRecord.id,
-        installmentNumber: it.installmentNumber,
+        sequence: it.installmentNumber,
         amount: it.amount.toFixed(2),
         dueDate: it.dueDate,
       }));
@@ -62,7 +63,7 @@ export const feeRecordService = {
 
     const installments = result.installments.map((ins: any) => ({
       id: ins.id,
-      sequence: ins.sequence,
+      installmentNumber: ins.sequence,
       amount: Number(ins.amount.toString()),
       dueDate: ins.dueDate,
       status: ins.status,
@@ -105,5 +106,176 @@ export const feeRecordService = {
     };
 
     return feeRecord;
+  },
+
+  async getFeeRecords(schoolId: string) {
+    const records = await prisma.feeRecord.findMany({
+      where: {
+        student: {
+          schoolId,
+        },
+      },
+      include: {
+        student: true,
+        installments: {
+          include: {
+            payments: true,
+          },
+        },
+      },
+    });
+
+    return records.map((record) => {
+      const installments = record.installments.map((ins: any) => ({
+        id: ins.id,
+        installmentNumber: ins.sequence,
+        amount: Number(ins.amount.toString()),
+        dueDate: ins.dueDate,
+        status: ins.status,
+        paymentLink: null,
+      }));
+
+      const amountPaid = record.installments.reduce((sum: number, ins: any) => {
+        const installmentPaid = ins.payments?.reduce((paid: number, p: any) => paid + Number(p.amount.toString()), 0) ?? 0;
+        return sum + installmentPaid;
+      }, 0);
+
+      const paymentSummary = {
+        totalAmount: Number(record.totalAmount.toString()),
+        amountPaid,
+        outstandingBalance: Number(record.totalAmount.toString()) - amountPaid,
+        installmentsPaid: record.installments.filter((ins: any) => ins.payments?.length > 0).length,
+        installmentsPending: record.installments.filter((ins: any) => ins.payments?.length === 0).length,
+      };
+
+      return {
+        id: record.id,
+        student: {
+          id: record.student.id,
+          firstName: record.student.firstName,
+          lastName: record.student.lastName,
+          parentName: record.student.parentName,
+          parentPhone: record.student.parentPhone,
+          parentEmail: record.student.parentEmail,
+          schoolId: record.student.schoolId,
+        },
+        title: record.title,
+        totalAmount: Number(record.totalAmount.toString()),
+        installmentCount: record.installmentCount,
+        startDate: record.startDate,
+        dueDate: record.dueDate,
+        status: record.status,
+        paymentSummary,
+        paymentLinks: null,
+        installments,
+      };
+    });
+  },
+
+  async getFeeRecordById(feeRecordId: string, schoolId: string) {
+    const record = await prisma.feeRecord.findUnique({
+      where: { id: feeRecordId },
+      include: {
+        student: true,
+        installments: {
+          include: {
+            payments: true,
+          },
+        },
+      },
+    });
+
+    if (!record) {
+      return null;
+    }
+
+    // Verify the fee record belongs to the school
+    if (record.student.schoolId !== schoolId) {
+      return null;
+    }
+
+    const installments = record.installments.map((ins: any) => ({
+      id: ins.id,
+      installmentNumber: ins.sequence,
+      amount: Number(ins.amount.toString()),
+      dueDate: ins.dueDate,
+      status: ins.status,
+      paymentLink: null,
+    }));
+
+    const amountPaid = record.installments.reduce((sum: number, ins: any) => {
+      const installmentPaid = ins.payments?.reduce((paid: number, p: any) => paid + Number(p.amount.toString()), 0) ?? 0;
+      return sum + installmentPaid;
+    }, 0);
+
+    const paymentSummary = {
+      totalAmount: Number(record.totalAmount.toString()),
+      amountPaid,
+      outstandingBalance: Number(record.totalAmount.toString()) - amountPaid,
+      installmentsPaid: record.installments.filter((ins: any) => ins.payments?.length > 0).length,
+      installmentsPending: record.installments.filter((ins: any) => ins.payments?.length === 0).length,
+    };
+
+    return {
+      id: record.id,
+      student: {
+        id: record.student.id,
+        firstName: record.student.firstName,
+        lastName: record.student.lastName,
+        parentName: record.student.parentName,
+        parentPhone: record.student.parentPhone,
+        parentEmail: record.student.parentEmail,
+        schoolId: record.student.schoolId,
+      },
+      title: record.title,
+      totalAmount: Number(record.totalAmount.toString()),
+      installmentCount: record.installmentCount,
+      startDate: record.startDate,
+      dueDate: record.dueDate,
+      status: record.status,
+      paymentSummary,
+      paymentLinks: null,
+      installments,
+    };
+  },
+
+  async getInstallments(feeRecordId: string, schoolId: string) {
+    const record = await prisma.feeRecord.findUnique({
+      where: { id: feeRecordId },
+      include: {
+        student: true,
+        installments: {
+          include: {
+            payments: true,
+          },
+        },
+      },
+    });
+
+    if (!record) {
+      return null;
+    }
+
+    // Verify the fee record belongs to the school
+    if (record.student.schoolId !== schoolId) {
+      return null;
+    }
+
+    return record.installments.map((ins: any) => ({
+      id: ins.id,
+      installmentNumber: ins.sequence,
+      amount: Number(ins.amount.toString()),
+      dueDate: ins.dueDate,
+      status: ins.status,
+      payments: ins.payments.map((p: any) => ({
+        id: p.id,
+        reference: p.reference,
+        transactionReference: p.transactionReference,
+        amount: Number(p.amount.toString()),
+        status: p.status,
+        paidAt: p.paidAt,
+        createdAt: p.createdAt,
+      })),
+    }));
   },
 };
