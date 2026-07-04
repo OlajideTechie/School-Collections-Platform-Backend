@@ -93,23 +93,44 @@ const options: swaggerJsdoc.Options = {
             parentEmail: { type: 'string', format: 'email', description: 'Email address of the student\'s parent/guardian (optional).', nullable: true },
           },
         },
-        CollectionPlan: {
+        PaymentSummary: {
+          type: 'object',
+          properties: {
+            totalAmount: { type: 'number' },
+            amountPaid: { type: 'number' },
+            outstandingBalance: { type: 'number' },
+            installmentsPaid: { type: 'integer' },
+            installmentsPending: { type: 'integer' },
+          },
+        },
+        FeeRecord: {
           type: 'object',
           properties: {
             id: { type: 'string' },
-            studentId: { type: 'string' },
             title: { type: 'string' },
             totalAmount: { type: 'number' },
             installmentCount: { type: 'integer' },
+            startDate: { type: 'string', format: 'date-time', nullable: true },
+            dueDate: { type: 'string', format: 'date-time', nullable: true },
+            status: { type: 'string', enum: ['PENDING','PARTIALLY_PAID','PAID','OVERDUE'] },
+            paymentSummary: { $ref: '#/components/schemas/PaymentSummary' },
+            paymentLinks: { type: 'object', nullable: true },
+            student: { $ref: '#/components/schemas/Student' },
+            installments: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/Installment' },
+            },
           },
         },
         Installment: {
           type: 'object',
           properties: {
             id: { type: 'string' },
+            sequence: { type: 'integer' },
             amount: { type: 'number' },
             dueDate: { type: 'string', format: 'date-time' },
             status: { type: 'string', enum: ['PENDING', 'PAID', 'OVERDUE'] },
+            paymentLink: { type: 'string', nullable: true },
           },
         },
       },

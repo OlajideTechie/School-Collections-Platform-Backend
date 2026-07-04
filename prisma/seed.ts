@@ -33,15 +33,15 @@ async function main() {
     },
   });
 
-  // 3. Create a Collection Plan
-  const collectionPlan = await prisma.collectionPlan.upsert({
+  // 3. Create a Fee Record
+  const feeRecord = await prisma.feeRecord.upsert({
     where: { id: 'sample-plan-id' },
     update: {},
     create: {
       id: 'sample-plan-id',
       studentId: student.id,
       title: 'Academic Year 2024/2025 - Term 1',
-      totalAmount: 1500.00,
+      totalAmount: 1500.0,
       installmentCount: 3,
     },
   });
@@ -52,9 +52,9 @@ async function main() {
     update: {},
     create: {
       id: 'sample-inst-1',
-      collectionPlanId: collectionPlan.id,
+      feeRecordId: feeRecord.id,
       sequence: 1,
-      amount: 500.00,
+      amount: 500.0,
       dueDate: new Date('2024-09-01'),
       status: InstallmentStatus.PAID,
     },
@@ -65,9 +65,9 @@ async function main() {
     update: {},
     create: {
       id: 'sample-inst-2',
-      collectionPlanId: collectionPlan.id,
+      feeRecordId: feeRecord.id,
       sequence: 2,
-      amount: 500.00,
+      amount: 500.0,
       dueDate: new Date('2024-10-01'),
       status: InstallmentStatus.PENDING,
     },
