@@ -65,7 +65,7 @@ export const feeRecordController = {
         return;
       }
 
-      const feeRecord = await feeRecordService.getFeeRecordById(id, schoolId);
+      const feeRecord = await feeRecordService.getFeeRecordById(id as string, schoolId);
 
       if (!feeRecord) {
         res.status(404).json({ success: false, message: 'Fee record not found.' });
@@ -94,7 +94,7 @@ export const feeRecordController = {
         return;
       }
 
-      const installments = await feeRecordService.getInstallments(id, schoolId);
+      const installments = await feeRecordService.getInstallments(id as string, schoolId);
 
       if (!installments) {
         res.status(404).json({ success: false, message: 'Fee record not found.' });
