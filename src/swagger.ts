@@ -143,8 +143,9 @@ const options: swaggerJsdoc.Options = {
 const swaggerSpec = swaggerJsdoc(options);
 
 export const setupSwagger = (app: Express) => {
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-  console.log('Swagger documentation available at http://localhost:5000/api-docs');
+   const swaggerUrl = `${process.env.API_URL || "http://localhost:5000"}/api-docs`;
+   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+   console.log(`Swagger documentation available at ${swaggerUrl}`);
 };
 
 export default swaggerSpec;
