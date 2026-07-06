@@ -9,14 +9,19 @@ import feeRecordsRouter from "./routes/fee-records.routes";
 
 const app = express();
 
-const allowedOrigins =
-  process.env.FRONTEND_URLS?.split(",").map(origin => origin.trim()) ||
-  [process.env.FRONTEND_URL].filter(Boolean);
+const allowedOrigins = (
+  process.env.FRONTEND_URLS ?? ""
+)
+  .split(",")
+  .map(origin => origin.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow Postman, curl, server-to-server requests
+    origin(origin, callback) {
+      console.log("Origin:", origin);
+
+      // Allow Postman, curl, Swagger on same origin
       if (!origin) {
         return callback(null, true);
       }
@@ -25,11 +30,11 @@ app.use(
         return callback(null, true);
       }
 
-      return callback(new Error("Not allowed by CORS"));
+      console.error("Blocked CORS Origin:", origin);
+
+      callback(null, false);
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
