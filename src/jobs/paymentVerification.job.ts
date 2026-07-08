@@ -25,7 +25,11 @@ export function startPaymentVerificationJob(): ScheduledTask | null {
 
     try {
       const summary = await paymentService.verifyPendingPayments();
-      console.info('[PaymentVerificationJob] Finished successfully.', summary);
+      const remindersSent = await paymentService.sendInstallmentReminders();
+      console.info('[PaymentVerificationJob] Finished successfully.', {
+        ...summary,
+        remindersSent,
+      });
     } catch (error) {
       console.error('[PaymentVerificationJob] Failed.', error);
     } finally {
