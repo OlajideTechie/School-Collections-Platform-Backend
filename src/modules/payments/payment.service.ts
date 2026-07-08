@@ -1,0 +1,593 @@
+import { FeeRecordStatus, PaymentStatus, Prisma } from '@prisma/client';
+import prisma from '../../config/database';
+import {
+  AlatpayTransactionStatusResponse,
+  alatpayService,
+} from '../../integrations/alatpay/alatpay.service';
+import { notificationService } from '../notifications/notification.service';
+import {
+  createPaymentReference,
+  mapFeeRecordStatusFromInstallments,
+  mapProviderPaymentStatus,
+} from './payment.utils';
+
+type InternalPaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
+
+type PaymentWithInstallment = Prisma.PaymentGetPayload<{
+  include: {
+    installment: {
+      include: {
+        feeRecord: {
+          include: {
+            student: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type PrismaExecutor = Prisma.TransactionClient | typeof prisma;
+
+interface NormalizedAlatpayStatus {
+  transactionReference: string;
+  providerStatus: string;
+  paymentStatus: InternalPaymentStatus;
+}
+
+interface PaymentReconciliationResult {
+  paymentId: string;
+  status: 'PENDING' | 'SUCCESS' | 'already-processed';
+  providerStatus: string;
+  transactionReference: string;
+  feeRecordStatus?: FeeRecordStatus;
+  message?: string;
+}
+
+interface VerifyPendingPaymentsResult {
+  checked: number;
+  eligible: number;
+  successful: number;
+  pending: number;
+  alreadyProcessed: number;
+  failed: number;
+}
+
+const DEFAULT_PAYMENT_VERIFICATION_WINDOW_MINUTES = 180;
+
+function getPaymentVerificationWindowMinutes(): number {
+  const rawValue = process.env.PAYMENT_VERIFICATION_WINDOW_MINUTES;
+
+  if (!rawValue) {
+    return DEFAULT_PAYMENT_VERIFICATION_WINDOW_MINUTES;
+  }
+
+  const parsedValue = Number(rawValue);
+
+  if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+    return DEFAULT_PAYMENT_VERIFICATION_WINDOW_MINUTES;
+  }
+
+  return Math.floor(parsedValue);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readString(
+  source: Record<string, unknown>,
+  paths: string[][]
+): string | null {
+  for (const path of paths) {
+    let current: unknown = source;
+
+    for (const segment of path) {
+      const record = asRecord(current);
+      if (!record) {
+        current = undefined;
+        break;
+      }
+
+      current = record[segment];
+    }
+
+    if (typeof current === 'string' && current.trim()) {
+      return current.trim();
+    }
+
+    if (typeof current === 'number') {
+      return String(current);
+    }
+  }
+
+  return null;
+}
+
+function mapProviderStatus(providerStatus: string): InternalPaymentStatus {
+  return mapProviderPaymentStatus(providerStatus);
+}
+
+function normalizeAlatpayStatusPayload(
+  payload: unknown,
+  fallbackTransactionReference?: string
+): NormalizedAlatpayStatus {
+  const body = asRecord(payload) ?? {};
+  const transactionReference =
+    readString(body, [
+      ['data', 'transactionId'],
+      ['data', 'transactionReference'],
+      ['data', 'reference'],
+      ['data', 'orderId'],
+      ['transactionId'],
+      ['transactionReference'],
+      ['reference'],
+      ['orderId'],
+      ['paymentReference'],
+    ]) ?? fallbackTransactionReference;
+
+  if (!transactionReference) {
+    throw new Error('Missing transaction reference.');
+  }
+
+  const providerStatus =
+    readString(body, [
+      ['data', 'status'],
+      ['data', 'transactionStatus'],
+      ['data', 'paymentStatus'],
+      ['transactionStatus'],
+      ['paymentStatus'],
+      ['status'],
+    ]) ?? 'PENDING';
+
+  return {
+    transactionReference,
+    providerStatus,
+    paymentStatus: mapProviderStatus(providerStatus),
+  };
+}
+
+function isNormalizedAlatpayStatus(
+  value: unknown
+): value is NormalizedAlatpayStatus {
+  const record = asRecord(value);
+
+  return Boolean(
+    record &&
+      typeof record.transactionReference === 'string' &&
+      typeof record.providerStatus === 'string' &&
+      typeof record.paymentStatus === 'string'
+  );
+}
+
+async function findPaymentByTransactionReference(transactionReference: string) {
+  return prisma.payment.findFirst({
+    where: {
+      OR: [
+        { transactionReference },
+        { reference: transactionReference },
+      ],
+    },
+    include: {
+      installment: {
+        include: {
+          feeRecord: {
+            include: {
+              student: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+export const paymentService = {
+  async generateInstallmentVirtualAccount(installmentId: string, schoolId: string) {
+    const installment = await prisma.installment.findUnique({
+      where: { id: installmentId },
+      include: {
+        feeRecord: {
+          include: {
+            student: true,
+          },
+        },
+      },
+    });
+
+    if (!installment) {
+      throw new Error('Installment not found.');
+    }
+
+    if (installment.feeRecord.student.schoolId !== schoolId) {
+      throw new Error('Installment does not belong to the authenticated school.');
+    }
+
+    if (installment.status === 'PAID') {
+      throw new Error('Installment already paid.');
+    }
+
+    const reference = createPaymentReference();
+    const student = installment.feeRecord.student;
+    const customerEmail = student.parentEmail?.trim();
+    const customerPhone = student.parentPhone?.trim();
+
+    if (!customerEmail) {
+      throw new Error('Customer email is required.');
+    }
+
+    if (!customerPhone) {
+      throw new Error('Customer phone is required.');
+    }
+
+    const payment = await prisma.payment.create({
+      data: {
+        installmentId: installment.id,
+        reference,
+        amount: installment.amount.toString(),
+        status: 'PENDING',
+      },
+    });
+
+    const virtualAccount = await alatpayService.createVirtualAccount({
+      amount: Number(installment.amount.toString()),
+      orderId: reference,
+      description: `Installment ${installment.sequence} payment for ${student.firstName} ${student.lastName}`,
+      customer: {
+        email: customerEmail,
+        phone: customerPhone,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        metadata: JSON.stringify({
+          paymentId: payment.id,
+          installmentId: installment.id,
+          feeRecordId: installment.feeRecordId,
+          schoolId,
+          reference,
+        }),
+      },
+    });
+
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        transactionReference: virtualAccount.transactionId,
+      },
+    });
+    
+    // Send notification to the parent about the generated virtual account.
+    await notificationService.sendVirtualAccount(payment.id, {
+      recipient: customerPhone || customerEmail,
+      message: `A virtual account was generated for installment ${installment.sequence}. Pay ${Number(installment.amount.toString())} NGN to account ${virtualAccount.virtualBankAccountNumber} (bank code: ${virtualAccount.virtualBankCode}). The account expires at ${virtualAccount.expiresAt}.`,
+    });
+
+    return {
+      paymentId: payment.id,
+      reference,
+      providerPaymentId: virtualAccount.providerPaymentId,
+      transactionId: virtualAccount.transactionId,
+      virtualBankAccountNumber: virtualAccount.virtualBankAccountNumber,
+      virtualBankCode: virtualAccount.virtualBankCode,
+      businessBankAccountNumber: virtualAccount.businessBankAccountNumber,
+      businessBankCode: virtualAccount.businessBankCode,
+      expiresAt: virtualAccount.expiresAt,
+      amount: Number(installment.amount.toString()),
+      installmentId: installment.id,
+      status: 'PENDING',
+    };
+  },
+
+  async verifyPendingPayments(): Promise<VerifyPendingPaymentsResult> {
+    const verificationWindowMinutes = getPaymentVerificationWindowMinutes();
+    const recentThreshold = new Date(
+      Date.now() - verificationWindowMinutes * 60 * 1000
+    );
+
+    const pendingPayments = await prisma.payment.findMany({
+      where: {
+        status: PaymentStatus.PENDING,
+        transactionReference: {
+          not: null,
+        },
+        createdAt: {
+          gte: recentThreshold,
+        },
+      },
+      include: {
+        installment: {
+          include: {
+            feeRecord: {
+              include: {
+                student: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    const summary: VerifyPendingPaymentsResult = {
+      checked: pendingPayments.length,
+      eligible: pendingPayments.length,
+      successful: 0,
+      pending: 0,
+      alreadyProcessed: 0,
+      failed: 0,
+    };
+
+    for (const payment of pendingPayments) {
+      try {
+        const result = await this.reconcilePayment(payment);
+
+        if (result.status === 'SUCCESS') {
+          summary.successful += 1;
+          continue;
+        }
+
+        if (result.status === 'already-processed') {
+          summary.alreadyProcessed += 1;
+          continue;
+        }
+
+        summary.pending += 1;
+      } catch (error) {
+        summary.failed += 1;
+        console.error(
+          `[PaymentVerification] Failed to reconcile payment ${payment.id}:`,
+          error
+        );
+      }
+    }
+
+    return summary;
+  },
+
+  // Retrieve payment history for a specific installment   
+  async getInstallmentPaymentHistory(installmentId: string, schoolId: string) {
+    const installment = await prisma.installment.findUnique({
+      where: { id: installmentId },
+      include: {
+        feeRecord: {
+          include: {
+            student: true,
+          },
+        },
+      },
+    });
+
+    if (!installment) {
+      throw new Error('Installment not found.');
+    }
+
+    if (installment.feeRecord.student.schoolId !== schoolId) {
+      throw new Error('Installment does not belong to the authenticated school.');
+    }
+
+    // Retrieve all payments associated with the installment, ordered by creation date
+    const payments = await prisma.payment.findMany({
+      where: { installmentId },
+      orderBy: { createdAt: 'asc' },
+    });
+   
+    // Map the payments to a simplified structure for the response
+    return payments.map((payment) => ({
+      message: `Payment for installment ${installment.sequence} has been processed.`,
+      id: payment.id,
+      reference: payment.reference,
+      transactionReference: payment.transactionReference,
+      amount: Number(payment.amount.toString()),
+      status: payment.status,
+      paidAt: payment.paidAt,
+      createdAt: payment.createdAt,
+    }));
+  },
+
+  async verifyAlatpayTransaction(transactionReference: string, schoolId: string) {
+    if (!transactionReference.trim()) {
+      throw new Error('Transaction reference is required.');
+    }
+
+    const payment = await findPaymentByTransactionReference(transactionReference);
+
+    if (!payment) {
+      throw new Error('Payment not found.');
+    }
+
+    if (payment.installment.feeRecord.student.schoolId !== schoolId) {
+      throw new Error('Payment does not belong to the authenticated school.');
+    }
+
+    const providerTransactionReference = payment.transactionReference ?? transactionReference;
+    const providerResponse = await alatpayService.getPaymentStatus(providerTransactionReference);
+    const updateResult = await this.reconcilePayment(payment, providerResponse);
+
+    return {
+      ...updateResult,
+      providerResponse,
+    };
+  },
+
+  async reconcilePayment(
+    payment: PaymentWithInstallment,
+    verificationResponse?: AlatpayTransactionStatusResponse | NormalizedAlatpayStatus
+  ): Promise<PaymentReconciliationResult> {
+    const providerTransactionReference = payment.transactionReference ?? payment.reference;
+    const normalizedStatus = isNormalizedAlatpayStatus(verificationResponse)
+      ? verificationResponse
+      : normalizeAlatpayStatusPayload(
+          verificationResponse ?? await alatpayService.getPaymentStatus(providerTransactionReference),
+          providerTransactionReference
+        );
+
+    if (normalizedStatus.paymentStatus !== 'SUCCESS') {
+      return {
+        paymentId: payment.id,
+        status: 'PENDING',
+        providerStatus: normalizedStatus.providerStatus,
+        transactionReference: normalizedStatus.transactionReference,
+        message: 'Payment is still pending with ALATPay.',
+      };
+    }
+
+    return this.handleSuccessfulPayment(payment, normalizedStatus);
+  },
+
+  async handleSuccessfulPayment(
+    payment: PaymentWithInstallment,
+    verificationResponse: NormalizedAlatpayStatus
+  ): Promise<PaymentReconciliationResult> {
+    const result = await prisma.$transaction(async (tx) => {
+      const paymentUpdate = await tx.payment.updateMany({
+        where: {
+          id: payment.id,
+          status: {
+            not: PaymentStatus.SUCCESS,
+          },
+        },
+        data: {
+          status: PaymentStatus.SUCCESS,
+          paidAt: new Date(),
+          transactionReference: verificationResponse.transactionReference,
+        },
+      });
+
+      if (paymentUpdate.count === 0) {
+        const currentPayment = await tx.payment.findUnique({
+          where: { id: payment.id },
+        });
+
+        return {
+          paymentId: payment.id,
+          status: 'already-processed' as const,
+          providerStatus: verificationResponse.providerStatus,
+          transactionReference: verificationResponse.transactionReference,
+          feeRecordStatus: currentPayment?.status === PaymentStatus.SUCCESS
+            ? await this.updateFeeRecordStatus(payment.installment.feeRecordId, tx)
+            : undefined,
+          message: 'Payment has already been processed.',
+        };
+      }
+
+      await tx.installment.update({
+        where: {
+          id: payment.installmentId,
+        },
+        data: {
+          status: 'PAID',
+        },
+      });
+
+      const feeRecordStatus = await this.updateFeeRecordStatus(
+        payment.installment.feeRecordId,
+        tx
+      );
+
+      return {
+        paymentId: payment.id,
+        status: 'SUCCESS' as const,
+        providerStatus: verificationResponse.providerStatus,
+        transactionReference: verificationResponse.transactionReference,
+        feeRecordStatus,
+      };
+    });
+
+    if (result.status === 'SUCCESS') {
+      await notificationService.sendPaymentConfirmation(payment.id, {
+        recipient:
+          payment.installment.feeRecord.student.parentPhone ||
+          payment.installment.feeRecord.student.parentEmail ||
+          '',
+        message:
+          'Your payment was successful and the installment has been marked as paid.',
+      });
+    }
+
+    return result;
+  },
+
+  async updateFeeRecordStatus(
+    feeRecordId: string,
+    tx: PrismaExecutor = prisma
+  ): Promise<FeeRecordStatus> {
+    const feeRecord = await tx.feeRecord.findUnique({
+      where: { id: feeRecordId },
+      include: {
+        installments: {
+          include: {
+            payments: true,
+          },
+        },
+      },
+    });
+
+    if (!feeRecord) {
+      throw new Error('Fee record not found.');
+    }
+
+    const hasSuccessfulPayment = feeRecord.installments.some((installment) =>
+      installment.payments.some(
+        (paymentEntry) => paymentEntry.status === PaymentStatus.SUCCESS
+      )
+    );
+
+    const nextStatus = mapFeeRecordStatusFromInstallments({
+      installmentStatuses: feeRecord.installments.map(
+        (installment) => installment.status
+      ),
+      hasSuccessfulPayment,
+    }) as FeeRecordStatus;
+
+    await tx.feeRecord.update({
+      where: { id: feeRecordId },
+      data: {
+        status: nextStatus,
+      },
+    });
+
+    return nextStatus;
+  },
+
+  async handleAlatpayWebhook(payload: unknown) {
+    const normalizedStatus = normalizeAlatpayStatusPayload(payload);
+    const payment = await findPaymentByTransactionReference(normalizedStatus.transactionReference);
+
+    if (!payment) {
+      throw new Error('Payment not found.');
+    }
+
+    return this.reconcilePayment(payment, normalizedStatus);
+  },
+
+  async sendInstallmentReminders(daysBefore = 3) {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() + daysBefore * 24 * 60 * 60 * 1000);
+
+    const installments = await prisma.installment.findMany({
+      where: {
+        status: { not: 'PAID' },
+        dueDate: { lte: cutoff, gte: now },
+      },
+      include: {
+        feeRecord: {
+          include: {
+            student: true,
+          },
+        },
+      },
+    });
+
+    for (const installment of installments) {
+      await notificationService.sendInstallmentReminder(installment, {
+        recipient: installment.feeRecord.student.parentPhone || installment.feeRecord.student.parentEmail || '',
+        message: `Reminder: installment ${installment.sequence} is due on ${installment.dueDate?.toISOString()}.`,
+      });
+    }
+
+    return installments.length;
+  },
+};

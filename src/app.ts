@@ -6,6 +6,8 @@ import morgan from "morgan";
 import studentRouter from "./routes/student.routes";
 import schoolRouter from "./routes/school.routes";
 import feeRecordsRouter from "./routes/fee-records.routes";
+import paymentRouter from "./routes/payments.routes";
+import { startPaymentVerificationJob } from "./jobs/paymentVerification.job";
 
 const app = express();
 
@@ -43,7 +45,14 @@ app.use(compression());
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan("dev"));
 }
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buffer) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody =
+        Buffer.from(buffer);
+    },
+  })
+);
 
 // Root endpoint upon accessing the API
 app.get("/", (_, res) => {
@@ -67,5 +76,9 @@ app.get("/health", (_, res) => {
 app.use('/students', studentRouter);
 app.use('/schools', schoolRouter);
 app.use('/fee-records', feeRecordsRouter);
+app.use('/payments', paymentRouter);
+
+startPaymentVerificationJob();
 
 export default app;
+

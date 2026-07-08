@@ -67,7 +67,7 @@ export const feeRecordService = {
       amount: Number(ins.amount.toString()),
       dueDate: ins.dueDate,
       status: ins.status,
-      paymentLink: null,
+      virtualAccount: null,
     }));
 
     const amountPaid = result.installments.reduce((sum: number, ins: any) => {
@@ -101,7 +101,7 @@ export const feeRecordService = {
       dueDate: result.dueDate,
       status: result.status,
       paymentSummary,
-      paymentLinks: null,
+      virtualAccounts: null,
       installments,
     };
 
@@ -132,7 +132,7 @@ export const feeRecordService = {
         amount: Number(ins.amount.toString()),
         dueDate: ins.dueDate,
         status: ins.status,
-        paymentLink: null,
+        virtualAccount: null,
       }));
 
       const amountPaid = record.installments.reduce((sum: number, ins: any) => {
@@ -166,7 +166,7 @@ export const feeRecordService = {
         dueDate: record.dueDate,
         status: record.status,
         paymentSummary,
-        paymentLinks: null,
+        virtualAccounts: null,
         installments,
       };
     });
@@ -200,7 +200,7 @@ export const feeRecordService = {
       amount: Number(ins.amount.toString()),
       dueDate: ins.dueDate,
       status: ins.status,
-      paymentLink: null,
+      virtualAccount: null,
     }));
 
     const amountPaid = record.installments.reduce((sum: number, ins: any) => {
@@ -234,7 +234,7 @@ export const feeRecordService = {
       dueDate: record.dueDate,
       status: record.status,
       paymentSummary,
-      paymentLinks: null,
+      virtualAccounts: null,
       installments,
     };
   },
