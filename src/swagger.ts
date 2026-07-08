@@ -114,7 +114,7 @@ const options: swaggerJsdoc.Options = {
             dueDate: { type: 'string', format: 'date-time', nullable: true },
             status: { type: 'string', enum: ['PENDING','PARTIALLY_PAID','PAID','OVERDUE'] },
             paymentSummary: { $ref: '#/components/schemas/PaymentSummary' },
-            paymentLinks: { type: 'object', nullable: true },
+            virtualAccounts: { type: 'object', nullable: true },
             student: { $ref: '#/components/schemas/Student' },
             installments: {
               type: 'array',
@@ -130,7 +130,7 @@ const options: swaggerJsdoc.Options = {
             amount: { type: 'number' },
             dueDate: { type: 'string', format: 'date-time' },
             status: { type: 'string', enum: ['PENDING', 'PAID', 'OVERDUE'] },
-            paymentLink: { type: 'string', nullable: true },
+            virtualAccount: { type: 'string', nullable: true },
           },
         },
       },

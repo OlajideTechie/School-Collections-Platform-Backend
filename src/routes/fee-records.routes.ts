@@ -83,7 +83,7 @@ const router = Router();
  *                           type: integer
  *                         installmentsPending:
  *                           type: integer
- *                     paymentLinks:
+ *                     virtualAccounts:
  *                       nullable: true
  *                     student:
  *                       type: object
@@ -116,7 +116,7 @@ const router = Router();
  *                             format: date-time
  *                           status:
  *                             type: string
- *                           paymentLink:
+ *                           virtualAccount:
  *                             nullable: true
  *       400:
  *         description: Invalid input or student mismatch.
