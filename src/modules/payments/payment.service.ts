@@ -41,6 +41,7 @@ interface PaymentReconciliationResult {
   providerStatus: string;
   transactionReference: string;
   feeRecordStatus?: FeeRecordStatus;
+  remainingBalance?: number;
   message?: string;
 }
 
@@ -54,6 +55,8 @@ interface VerifyPendingPaymentsResult {
 }
 
 const DEFAULT_PAYMENT_VERIFICATION_WINDOW_MINUTES = 180;
+const UPCOMING_REMINDER_DAYS = new Set([3, 1]);
+const OVERDUE_REMINDER_INTERVAL_DAYS = 3;
 
 function getPaymentVerificationWindowMinutes(): number {
   const rawValue = process.env.PAYMENT_VERIFICATION_WINDOW_MINUTES;
@@ -256,11 +259,15 @@ export const paymentService = {
         transactionReference: virtualAccount.transactionId,
       },
     });
-    
-    // Send notification to the parent about the generated virtual account.
-    await notificationService.sendVirtualAccount(payment.id, {
+
+    await notificationService.sendPaymentInstructions({
+      paymentId: payment.id,
       recipient: customerPhone || customerEmail,
-      message: `A virtual account was generated for installment ${installment.sequence}. Pay ${Number(installment.amount.toString())} NGN to account ${virtualAccount.virtualBankAccountNumber} (bank code: ${virtualAccount.virtualBankCode}). The account expires at ${virtualAccount.expiresAt}.`,
+      parentName: student.parentName,
+      amount: Number(installment.amount.toString()),
+      virtualAccountNumber: virtualAccount.virtualBankAccountNumber,
+      expiryDate: virtualAccount.expiresAt,
+      bankName: 'Wema Bank',
     });
 
     return {
@@ -487,23 +494,55 @@ export const paymentService = {
         tx
       );
 
+      const feeRecord = await tx.feeRecord.findUnique({
+        where: { id: payment.installment.feeRecordId },
+        include: {
+          installments: {
+            include: {
+              payments: true,
+            },
+          },
+        },
+      });
+
+      if (!feeRecord) {
+        throw new Error('Fee record not found.');
+      }
+
+      const paidAmount = feeRecord.installments.reduce((sum, installment) => {
+        const installmentPaid = installment.payments
+          .filter((paymentEntry) => paymentEntry.status === PaymentStatus.SUCCESS)
+          .reduce((subtotal, paymentEntry) => subtotal + Number(paymentEntry.amount.toString()), 0);
+
+        return sum + installmentPaid;
+      }, 0);
+
+      const remainingBalance = Math.max(
+        Number(feeRecord.totalAmount.toString()) - paidAmount,
+        0
+      );
+
       return {
         paymentId: payment.id,
         status: 'SUCCESS' as const,
         providerStatus: verificationResponse.providerStatus,
         transactionReference: verificationResponse.transactionReference,
         feeRecordStatus,
+        remainingBalance,
       };
     });
 
     if (result.status === 'SUCCESS') {
-      await notificationService.sendPaymentConfirmation(payment.id, {
+      await notificationService.sendPaymentConfirmation({
+        paymentId: payment.id,
         recipient:
           payment.installment.feeRecord.student.parentPhone ||
           payment.installment.feeRecord.student.parentEmail ||
           '',
-        message:
-          'Your payment was successful and the installment has been marked as paid.',
+        parentName: payment.installment.feeRecord.student.parentName,
+        amount: Number(payment.amount.toString()),
+        installmentSequence: payment.installment.sequence,
+        remainingBalance: result.remainingBalance ?? 0,
       });
     }
 
@@ -570,7 +609,7 @@ export const paymentService = {
     const installments = await prisma.installment.findMany({
       where: {
         status: { not: 'PAID' },
-        dueDate: { lte: cutoff, gte: now },
+        dueDate: { lte: cutoff },
       },
       include: {
         feeRecord: {
@@ -578,16 +617,73 @@ export const paymentService = {
             student: true,
           },
         },
+        payments: {
+          where: {
+            status: {
+              not: PaymentStatus.SUCCESS,
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 1,
+        },
       },
     });
 
+    let remindersSent = 0;
+
     for (const installment of installments) {
-      await notificationService.sendInstallmentReminder(installment, {
-        recipient: installment.feeRecord.student.parentPhone || installment.feeRecord.student.parentEmail || '',
-        message: `Reminder: installment ${installment.sequence} is due on ${installment.dueDate?.toISOString()}.`,
-      });
+      const payment = installment.payments[0];
+      const recipient =
+        installment.feeRecord.student.parentPhone ||
+        installment.feeRecord.student.parentEmail ||
+        '';
+
+      if (!payment || !recipient) {
+        continue;
+      }
+
+      const dueDate = installment.dueDate;
+      const dayInMs = 24 * 60 * 60 * 1000;
+      const daysUntilDue = Math.ceil((dueDate.getTime() - now.getTime()) / dayInMs);
+      const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / dayInMs);
+
+      try {
+        if (daysUntilDue >= 0 && UPCOMING_REMINDER_DAYS.has(daysUntilDue)) {
+          await notificationService.sendDueSoonReminder({
+            paymentId: payment.id,
+            recipient,
+            parentName: installment.feeRecord.student.parentName,
+            amount: Number(installment.amount.toString()),
+            installmentSequence: installment.sequence,
+            dueDate,
+            daysUntilDue,
+          });
+          remindersSent += 1;
+          continue;
+        }
+
+        if (daysOverdue >= 1 && daysOverdue % OVERDUE_REMINDER_INTERVAL_DAYS === 1) {
+          await notificationService.sendOverdueReminder({
+            paymentId: payment.id,
+            recipient,
+            parentName: installment.feeRecord.student.parentName,
+            amount: Number(installment.amount.toString()),
+            installmentSequence: installment.sequence,
+            dueDate,
+            daysOverdue,
+          });
+          remindersSent += 1;
+        }
+      } catch (error) {
+        console.error(
+          `[PaymentReminder] Failed to send reminder for installment ${installment.id}:`,
+          error
+        );
+      }
     }
 
-    return installments.length;
+    return remindersSent;
   },
 };

@@ -4,7 +4,7 @@ import { alatpayWebhookController } from '../modules/webhooks/alatpayWebhook.con
 const router = Router();
 
 /**
- * @openapi
+ * @openapi-disabled
  * /webhooks/alatpay:
  *   post:
  *     tags:

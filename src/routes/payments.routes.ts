@@ -32,7 +32,7 @@ const router = Router();
 router.post('/installments/:installmentId/virtual-account', authenticateSchool, paymentController.generateVirtualAccount);
 
 /**
- * @openapi
+ * @openapi-disabled
  * /payments/transactions/{transactionReference}/verify:
  *   post:
  *     tags:
