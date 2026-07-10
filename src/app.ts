@@ -8,6 +8,7 @@ import schoolRouter from "./routes/school.routes";
 import feeRecordsRouter from "./routes/fee-records.routes";
 import paymentRouter from "./routes/payments.routes";
 import notificationsRouter from "./routes/notifications.routes";
+import dashboardRouter from "./routes/dashboard.routes";
 import { startPaymentInstructionGenerationJob } from "./jobs/paymentInstructionGeneration.job";
 import { startPaymentVerificationJob } from "./jobs/paymentVerification.job";
 
@@ -80,6 +81,7 @@ app.use('/schools', schoolRouter);
 app.use('/fee-records', feeRecordsRouter);
 app.use('/payments', paymentRouter);
 app.use('/notifications', notificationsRouter);
+app.use('/dashboard', dashboardRouter);
 
 startPaymentInstructionGenerationJob();
 startPaymentVerificationJob();
