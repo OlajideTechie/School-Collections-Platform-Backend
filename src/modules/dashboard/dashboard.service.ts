@@ -13,6 +13,14 @@ function normalizeRecentPaymentsLimit(limit?: number): number {
   return Math.min(Math.floor(limit), MAX_RECENT_PAYMENTS_LIMIT);
 }
 
+function toPercentage(value: number, total: number): number {
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Number(((value / total) * 100).toFixed(2));
+}
+
 export const dashboardService = {
   async getOverview(schoolId: string, options?: { recentPaymentsLimit?: number }) {
     const recentPaymentsLimit = normalizeRecentPaymentsLimit(
@@ -39,7 +47,9 @@ export const dashboardService = {
       feeRecordStatusCounts,
       overdueInstallmentSummary,
       dueSoonInstallmentsCount,
+      unpaidInstallmentsCount,
       pendingPaymentsCount,
+      paymentsCount,
       recentPayments,
     ] =
       await prisma.$transaction([
@@ -107,11 +117,26 @@ export const dashboardService = {
             },
           },
         }),
+        prisma.installment.count({
+          where: {
+            status: {
+              not: 'PAID',
+            },
+            feeRecord: {
+              student: {
+                schoolId,
+              },
+            },
+          },
+        }),
         prisma.payment.count({
           where: {
             ...schoolScopedPaymentWhere,
             status: PaymentStatus.PENDING,
           },
+        }),
+        prisma.payment.count({
+          where: schoolScopedPaymentWhere,
         }),
         prisma.payment.findMany({
           where: schoolScopedPaymentWhere,
@@ -148,16 +173,14 @@ export const dashboardService = {
       overdueInstallmentSummary._sum.amount?.toString() ?? 0
     );
 
-    const totalPartialPayments =
-      feeRecordStatusCounts.find(
-        (item) => item.status === FeeRecordStatus.PARTIALLY_PAID
-      )?._count._all ?? 0;
-
-    const feeRecordStatusBreakdown = {
+    const feeRecordStatusCountsByStatus = {
       pending:
         feeRecordStatusCounts.find((item) => item.status === FeeRecordStatus.PENDING)
           ?._count._all ?? 0,
-      partiallyPaid: totalPartialPayments,
+      partiallyPaid:
+        feeRecordStatusCounts.find(
+          (item) => item.status === FeeRecordStatus.PARTIALLY_PAID
+        )?._count._all ?? 0,
       paid:
         feeRecordStatusCounts.find((item) => item.status === FeeRecordStatus.PAID)
           ?._count._all ?? 0,
@@ -165,16 +188,33 @@ export const dashboardService = {
         feeRecordStatusCounts.find((item) => item.status === FeeRecordStatus.OVERDUE)
           ?._count._all ?? 0,
     };
+    const totalFeeRecords = Object.values(feeRecordStatusCountsByStatus).reduce(
+      (total, count) => total + count,
+      0
+    );
+
+    const feeRecordStatusBreakdown = {
+      pending: toPercentage(feeRecordStatusCountsByStatus.pending, totalFeeRecords),
+      partiallyPaid: toPercentage(
+        feeRecordStatusCountsByStatus.partiallyPaid,
+        totalFeeRecords
+      ),
+      paid: toPercentage(feeRecordStatusCountsByStatus.paid, totalFeeRecords),
+      overdue: toPercentage(feeRecordStatusCountsByStatus.overdue, totalFeeRecords),
+    };
 
     return {
       totals: {
         totalCollected,
         totalOutstandingBalance,
-        totalPartialPayments,
+        totalPartialPayments: feeRecordStatusBreakdown.partiallyPaid,
         collectionRate,
         overdueAmount,
-        dueSoonInstallmentsCount,
-        pendingPaymentsCount,
+        dueSoonInstallmentsCount: toPercentage(
+          dueSoonInstallmentsCount,
+          unpaidInstallmentsCount
+        ),
+        pendingPaymentsCount: toPercentage(pendingPaymentsCount, paymentsCount),
       },
       feeRecordStatusBreakdown,
       recentPayments: recentPayments.map((payment) => ({

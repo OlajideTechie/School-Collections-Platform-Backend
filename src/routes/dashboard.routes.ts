@@ -43,28 +43,47 @@ const router = Router();
  *                         totalOutstandingBalance:
  *                           type: number
  *                         totalPartialPayments:
- *                           type: integer
+ *                           type: number
+ *                           minimum: 0
+ *                           maximum: 100
+ *                           description: Percentage of fee records that are partially paid.
  *                         collectionRate:
  *                           type: number
+ *                           minimum: 0
+ *                           maximum: 100
  *                           description: Percentage of billed amount already collected.
  *                         overdueAmount:
  *                           type: number
  *                         dueSoonInstallmentsCount:
- *                           type: integer
- *                           description: Unpaid installments due within the next 7 days.
+ *                           type: number
+ *                           minimum: 0
+ *                           maximum: 100
+ *                           description: Percentage of unpaid installments due within the next 7 days.
  *                         pendingPaymentsCount:
- *                           type: integer
+ *                           type: number
+ *                           minimum: 0
+ *                           maximum: 100
+ *                           description: Percentage of payments that are pending.
  *                     feeRecordStatusBreakdown:
  *                       type: object
+ *                       description: Fee record status distribution, returned as percentages.
  *                       properties:
  *                         pending:
- *                           type: integer
+ *                           type: number
+ *                           minimum: 0
+ *                           maximum: 100
  *                         partiallyPaid:
- *                           type: integer
+ *                           type: number
+ *                           minimum: 0
+ *                           maximum: 100
  *                         paid:
- *                           type: integer
+ *                           type: number
+ *                           minimum: 0
+ *                           maximum: 100
  *                         overdue:
- *                           type: integer
+ *                           type: number
+ *                           minimum: 0
+ *                           maximum: 100
  *                     recentPayments:
  *                       type: array
  *                       items:
