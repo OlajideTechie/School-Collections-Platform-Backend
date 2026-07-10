@@ -1,5 +1,3 @@
-## ScholarPay Backend
-
 [![ALATPay](https://img.shields.io/badge/ALATPay-Integrated-00A859?style=for-the-badge)](https://alatpay.ng)
 [![Node.js](https://img.shields.io/badge/Node.js-22+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-5-black?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com)
@@ -7,6 +5,9 @@
 [![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![Swagger](https://img.shields.io/badge/Swagger-OpenAPI-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)](https://swagger.io)
+
+
+## ScholarPay Backend
 
 ScholarPay is a school fee collection and installment management platform designed to simplify how schools collect tuition and other educational fees while improving transparency for parents.
 
