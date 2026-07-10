@@ -1,6 +1,53 @@
 import prisma from '../../config/database';
 import { CreateFeeRecordInput } from '../../validation/feeRecord.validation';
 import { InstallmentGeneratorService } from './installmentGenerator.service';
+import { FeeRecordStatus } from '@prisma/client';
+
+function mapFeeRecord(record: any) {
+  const installments = record.installments.map((ins: any) => ({
+    id: ins.id,
+    installmentNumber: ins.sequence,
+    amount: Number(ins.amount.toString()),
+    dueDate: ins.dueDate,
+    status: ins.status,
+    virtualAccount: null,
+  }));
+
+  const amountPaid = record.installments.reduce((sum: number, ins: any) => {
+    const installmentPaid = ins.payments?.reduce((paid: number, p: any) => paid + Number(p.amount.toString()), 0) ?? 0;
+    return sum + installmentPaid;
+  }, 0);
+
+  const paymentSummary = {
+    totalAmount: Number(record.totalAmount.toString()),
+    amountPaid,
+    outstandingBalance: Number(record.totalAmount.toString()) - amountPaid,
+    installmentsPaid: record.installments.filter((ins: any) => ins.payments?.length > 0).length,
+    installmentsPending: record.installments.filter((ins: any) => ins.payments?.length === 0).length,
+  };
+
+  return {
+    id: record.id,
+    student: {
+      id: record.student.id,
+      firstName: record.student.firstName,
+      lastName: record.student.lastName,
+      parentName: record.student.parentName,
+      parentPhone: record.student.parentPhone,
+      parentEmail: record.student.parentEmail,
+      schoolId: record.student.schoolId,
+    },
+    title: record.title,
+    totalAmount: Number(record.totalAmount.toString()),
+    installmentCount: record.installmentCount,
+    startDate: record.startDate,
+    dueDate: record.dueDate,
+    status: record.status,
+    paymentSummary,
+    virtualAccounts: null,
+    installments,
+  };
+}
 
 export const feeRecordService = {
   async createFeeRecord(payload: CreateFeeRecordInput, schoolId: string) {
@@ -108,68 +155,61 @@ export const feeRecordService = {
     return feeRecord;
   },
 
-  async getFeeRecords(schoolId: string) {
-    const records = await prisma.feeRecord.findMany({
-      where: {
-        student: {
-          schoolId,
-        },
+  async getFeeRecords(
+    schoolId: string,
+    options?: {
+      status?: FeeRecordStatus;
+      skip?: number;
+      limit?: number;
+    }
+  ) {
+    const where = {
+      student: {
+        schoolId,
       },
-      include: {
-        student: true,
-        installments: {
-          include: {
-            payments: true,
+      ...(options?.status ? { status: options.status } : {}),
+    };
+
+    const [records, total, statusCounts] = await prisma.$transaction([
+      prisma.feeRecord.findMany({
+        where,
+        include: {
+          student: true,
+          installments: {
+            include: {
+              payments: true,
+            },
           },
         },
-      },
-    });
-
-    return records.map((record) => {
-      const installments = record.installments.map((ins: any) => ({
-        id: ins.id,
-        installmentNumber: ins.sequence,
-        amount: Number(ins.amount.toString()),
-        dueDate: ins.dueDate,
-        status: ins.status,
-        virtualAccount: null,
-      }));
-
-      const amountPaid = record.installments.reduce((sum: number, ins: any) => {
-        const installmentPaid = ins.payments?.reduce((paid: number, p: any) => paid + Number(p.amount.toString()), 0) ?? 0;
-        return sum + installmentPaid;
-      }, 0);
-
-      const paymentSummary = {
-        totalAmount: Number(record.totalAmount.toString()),
-        amountPaid,
-        outstandingBalance: Number(record.totalAmount.toString()) - amountPaid,
-        installmentsPaid: record.installments.filter((ins: any) => ins.payments?.length > 0).length,
-        installmentsPending: record.installments.filter((ins: any) => ins.payments?.length === 0).length,
-      };
-
-      return {
-        id: record.id,
-        student: {
-          id: record.student.id,
-          firstName: record.student.firstName,
-          lastName: record.student.lastName,
-          parentName: record.student.parentName,
-          parentPhone: record.student.parentPhone,
-          parentEmail: record.student.parentEmail,
-          schoolId: record.student.schoolId,
+        orderBy: { createdAt: 'desc' },
+        skip: options?.skip,
+        take: options?.limit,
+      }),
+      prisma.feeRecord.count({ where }),
+      prisma.feeRecord.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+        where: {
+          student: {
+            schoolId,
+          },
         },
-        title: record.title,
-        totalAmount: Number(record.totalAmount.toString()),
-        installmentCount: record.installmentCount,
-        startDate: record.startDate,
-        dueDate: record.dueDate,
-        status: record.status,
-        paymentSummary,
-        virtualAccounts: null,
-        installments,
-      };
-    });
+      }),
+    ]);
+
+    const summary = {
+      total: statusCounts.reduce((sum, item) => sum + item._count._all, 0),
+      pending: statusCounts.find((item) => item.status === 'PENDING')?._count._all ?? 0,
+      partiallyPaid: statusCounts.find((item) => item.status === 'PARTIALLY_PAID')?._count._all ?? 0,
+      paid: statusCounts.find((item) => item.status === 'PAID')?._count._all ?? 0,
+      overdue: statusCounts.find((item) => item.status === 'OVERDUE')?._count._all ?? 0,
+    };
+
+    return {
+      data: records.map(mapFeeRecord),
+      total,
+      summary,
+    };
   },
 
   async getFeeRecordById(feeRecordId: string, schoolId: string) {
@@ -239,7 +279,11 @@ export const feeRecordService = {
     };
   },
 
-  async getInstallments(feeRecordId: string, schoolId: string) {
+  async getInstallments(
+    feeRecordId: string,
+    schoolId: string,
+    options?: { skip?: number; limit?: number }
+  ) {
     const record = await prisma.feeRecord.findUnique({
       where: { id: feeRecordId },
       include: {
@@ -261,7 +305,11 @@ export const feeRecordService = {
       return null;
     }
 
-    return record.installments.map((ins: any) => ({
+    const total = record.installments.length;
+    const installments = record.installments
+      .sort((a: any, b: any) => a.sequence - b.sequence)
+      .slice(options?.skip ?? 0, (options?.skip ?? 0) + (options?.limit ?? total))
+      .map((ins: any) => ({
       id: ins.id,
       installmentNumber: ins.sequence,
       amount: Number(ins.amount.toString()),
@@ -277,5 +325,10 @@ export const feeRecordService = {
         createdAt: p.createdAt,
       })),
     }));
+
+    return {
+      data: installments,
+      total,
+    };
   },
 };

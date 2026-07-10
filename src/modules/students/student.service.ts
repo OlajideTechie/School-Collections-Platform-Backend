@@ -37,6 +37,25 @@ export const studentService = {
     });
   },
 
+  async getStudentsPaginated(
+    schoolId: string,
+    pagination: { skip: number; limit: number }
+  ) {
+    const where = { schoolId };
+
+    const [data, total] = await prisma.$transaction([
+      prisma.student.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+      prisma.student.count({ where }),
+    ]);
+
+    return { data, total };
+  },
+
   async getStudentById(id: string, schoolId: string) {
     return prisma.student.findFirst({
       where: { id, schoolId },

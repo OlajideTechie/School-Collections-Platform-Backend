@@ -6,6 +6,7 @@ import {
   studentIdParamSchema,
 } from '../../validation/student.validation';
 import { studentService } from './student.service';
+import { buildPaginationMeta, parsePagination } from '../../utils/pagination';
 
 export const studentController = {
   /**
@@ -19,9 +20,17 @@ export const studentController = {
         res.status(401).json({ success: false, message: 'Unauthorized.' });
         return;
       }
-      const students = await studentService.getStudents(schoolId);
+      const pagination = parsePagination({
+        page: req.query.page,
+        limit: req.query.limit,
+      });
+      const students = await studentService.getStudentsPaginated(schoolId, pagination);
 
-      res.status(200).json({ success: true, data: students });
+      res.status(200).json({
+        success: true,
+        data: students.data,
+        pagination: buildPaginationMeta(pagination, students.total),
+      });
     } catch (error: unknown) {
       if (error instanceof ZodError) {
         res.status(400).json({ success: false, errors: error.issues });

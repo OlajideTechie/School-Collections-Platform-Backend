@@ -100,15 +100,26 @@ async function request(method, path, body) {
 }
 
 test('GET /students returns students', async () => {
-  studentService.getStudents = async (schoolId) => {
+  studentService.getStudentsPaginated = async (schoolId, pagination) => {
     assert.equal(schoolId, 'sample-school-id');
-    return [student];
+    return { data: [student], total: 1 };
   };
 
   const response = await request('GET', '/students');
 
   assert.equal(response.status, 200);
-  assert.deepEqual(response.body, { success: true, data: [student] });
+  assert.deepEqual(response.body, {
+    success: true,
+    data: [student],
+    pagination: {
+      page: 1,
+      limit: 10,
+      total: 1,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  });
 });
 
 test('GET /students/:id returns a student', async () => {
