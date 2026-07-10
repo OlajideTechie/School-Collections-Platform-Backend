@@ -3,27 +3,27 @@ import { alatpayWebhookController } from '../modules/webhooks/alatpayWebhook.con
 
 const router = Router();
 
-/**
- * @openapi-disabled
- * /webhooks/alatpay:
- *   post:
- *     tags:
- *       - Webhooks
- *     summary: Receive ALATPay payment webhook notifications
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       200:
- *         description: Webhook processed successfully.
- *       401:
- *         description: Invalid webhook signature.
- *       400:
- *         description: Missing transaction reference.
- */
+// /**
+//  * @openapi
+//  * /webhooks/alatpay:
+//  *   post:
+//  *     tags:
+//  *       - Webhooks
+//  *     summary: Receive ALATPay payment webhook notifications
+//  *     requestBody:
+//  *       required: true
+//  *       content:
+//  *         application/json:
+//  *           schema:
+//  *             type: object
+//  *     responses:
+//  *       200:
+//  *         description: Webhook processed successfully.
+//  *       401:
+//  *         description: Invalid webhook signature.
+//  *       400:
+//  *         description: Missing transaction reference.
+//  */
 router.post('/alatpay', alatpayWebhookController.handleWebhook);
 
 export default router;

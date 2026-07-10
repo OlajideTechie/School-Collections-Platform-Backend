@@ -134,6 +134,23 @@ router.post('/', authenticateSchool, feeRecordController.createFeeRecord);
  *     summary: Get all fee records for the authenticated school
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *       - name: status
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [PENDING, PARTIALLY_PAID, PAID, OVERDUE]
  *     responses:
  *       200:
  *         description: List of all fee records.
@@ -193,6 +210,34 @@ router.post('/', authenticateSchool, feeRecordController.createFeeRecord);
  *                             type: integer
  *                           installmentsPending:
  *                             type: integer
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     pending:
+ *                       type: integer
+ *                     partiallyPaid:
+ *                       type: integer
+ *                     paid:
+ *                       type: integer
+ *                     overdue:
+ *                       type: integer
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *                     hasNextPage:
+ *                       type: boolean
+ *                     hasPreviousPage:
+ *                       type: boolean
  *       401:
  *         description: Unauthorized.
  *       500:
@@ -316,6 +361,16 @@ router.get('/:id', authenticateSchool, feeRecordController.getFeeRecordById);
  *         description: Fee record ID
  *         schema:
  *           type: string
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
  *     responses:
  *       200:
  *         description: List of installments.
@@ -363,6 +418,21 @@ router.get('/:id', authenticateSchool, feeRecordController.getFeeRecordById);
  *                             createdAt:
  *                               type: string
  *                               format: date-time
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *                     hasNextPage:
+ *                       type: boolean
+ *                     hasPreviousPage:
+ *                       type: boolean
  *       400:
  *         description: Invalid input.
  *       401:

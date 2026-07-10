@@ -29,22 +29,30 @@ interface PaymentConfirmationInput {
 
 interface DueSoonReminderInput {
   paymentId: string;
+  installmentId: string;
   recipient: string;
   parentName: string;
   amount: number;
   installmentSequence: number;
   dueDate: Date | string;
   daysUntilDue: number;
+  virtualAccountNumber: string;
+  expiryDate: Date | string;
+  bankName?: string;
 }
 
 interface OverdueReminderInput {
   paymentId: string;
+  installmentId: string;
   recipient: string;
   parentName: string;
   amount: number;
   installmentSequence: number;
   dueDate: Date | string;
   daysOverdue: number;
+  virtualAccountNumber: string;
+  expiryDate: Date | string;
+  bankName?: string;
 }
 
 function formatAmount(value: number): string {
@@ -80,7 +88,102 @@ function formatWATDate(value: Date | string): string {
   return `${day} ${month} ${year}, ${hour}:${minute} ${dayPeriod} (WAT)`;
 }
 
+function inferNotificationType(message: string):
+  | 'PAYMENT_INSTRUCTIONS'
+  | 'PAYMENT_CONFIRMATION'
+  | 'REMINDER_DUE_SOON'
+  | 'REMINDER_OVERDUE'
+  | 'GENERAL' {
+  if (message.includes('payment account has been generated')) {
+    return 'PAYMENT_INSTRUCTIONS';
+  }
+
+  if (message.includes('Payment Received') || message.includes('marked as PAID')) {
+    return 'PAYMENT_CONFIRMATION';
+  }
+
+  if (message.includes('Due in')) {
+    return 'REMINDER_DUE_SOON';
+  }
+
+  if (message.includes('Overdue Reminder')) {
+    return 'REMINDER_OVERDUE';
+  }
+
+  return 'GENERAL';
+}
+
 export const notificationService = {
+  async getNotificationsPaginated(
+    schoolId: string,
+    options: { skip: number; limit: number }
+  ) {
+    const where = {
+      payment: {
+        installment: {
+          feeRecord: {
+            student: {
+              schoolId,
+            },
+          },
+        },
+      },
+    };
+
+    const [notifications, total] = await prisma.$transaction([
+      prisma.notification.findMany({
+        where,
+        include: {
+          payment: {
+            include: {
+              installment: {
+                include: {
+                  feeRecord: {
+                    include: {
+                      student: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip: options.skip,
+        take: options.limit,
+      }),
+      prisma.notification.count({ where }),
+    ]);
+
+    return {
+      data: notifications.map((notification) => ({
+        id: notification.id,
+        paymentId: notification.paymentId,
+        channel: notification.channel,
+        recipient: notification.recipient,
+        message: notification.message,
+        status: notification.status,
+        type: inferNotificationType(notification.message),
+        sentAt: notification.sentAt,
+        createdAt: notification.createdAt,
+        payment: {
+          reference: notification.payment.reference,
+          amount: Number(notification.payment.amount.toString()),
+          installmentSequence: notification.payment.installment.sequence,
+          student: {
+            id: notification.payment.installment.feeRecord.student.id,
+            firstName: notification.payment.installment.feeRecord.student.firstName,
+            lastName: notification.payment.installment.feeRecord.student.lastName,
+            parentName: notification.payment.installment.feeRecord.student.parentName,
+          },
+        },
+      })),
+      total,
+    };
+  },
+
   async sendPaymentInstructions(input: PaymentInstructionsInput) {
     const bankName = input.bankName ?? 'Wema Bank';
     const message = [
@@ -138,14 +241,16 @@ export const notificationService = {
   async sendDueSoonReminder(input: DueSoonReminderInput) {
     const reminderTitle = `⏰ Payment Reminder (Due in ${input.daysUntilDue} day${input.daysUntilDue === 1 ? '' : 's'})`;
 
-    const alreadySent = await this.wasReminderSentToday(
-      input.paymentId,
+    const alreadySent = await this.wasInstallmentReminderSentToday(
+      input.installmentId,
       reminderTitle
     );
 
     if (alreadySent) {
       return { success: true, skipped: true };
     }
+
+    const bankName = input.bankName ?? 'Wema Bank';
 
     const message = [
       reminderTitle,
@@ -155,6 +260,11 @@ export const notificationService = {
       `Installment ${input.installmentSequence} is due soon.`,
       `Amount: ${formatAmount(input.amount)}`,
       `Due Date: ${formatWATDate(input.dueDate)}`,
+      '',
+      'Use this refreshed payment account:',
+      `Bank: ${bankName}`,
+      `Account Number: ${input.virtualAccountNumber}`,
+      `Expires: ${formatWATDate(input.expiryDate)}`,
       '',
       'Please complete your transfer before the due date.',
     ].join('\n');
@@ -170,14 +280,16 @@ export const notificationService = {
   async sendOverdueReminder(input: OverdueReminderInput) {
     const reminderTitle = `⚠️ Overdue Reminder (Day ${input.daysOverdue})`;
 
-    const alreadySent = await this.wasReminderSentToday(
-      input.paymentId,
+    const alreadySent = await this.wasInstallmentReminderSentToday(
+      input.installmentId,
       reminderTitle
     );
 
     if (alreadySent) {
       return { success: true, skipped: true };
     }
+
+    const bankName = input.bankName ?? 'Wema Bank';
 
     const message = [
       reminderTitle,
@@ -187,6 +299,11 @@ export const notificationService = {
       `Installment ${input.installmentSequence} is overdue.`,
       `Amount: ${formatAmount(input.amount)}`,
       `Due Date: ${formatWATDate(input.dueDate)}`,
+      '',
+      'Use this refreshed payment account:',
+      `Bank: ${bankName}`,
+      `Account Number: ${input.virtualAccountNumber}`,
+      `Expires: ${formatWATDate(input.expiryDate)}`,
       '',
       'Please make your payment as soon as possible.',
     ].join('\n');
@@ -215,6 +332,35 @@ export const notificationService = {
     const existing = await prisma.notification.findFirst({
       where: {
         paymentId,
+        channel: NotificationChannel.WHATSAPP,
+        status: NotificationStatus.SENT,
+        createdAt: {
+          gte: todayStart,
+        },
+        message: {
+          startsWith: reminderTitle,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return Boolean(existing);
+  },
+
+  async wasInstallmentReminderSentToday(
+    installmentId: string,
+    reminderTitle: string
+  ): Promise<boolean> {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const existing = await prisma.notification.findFirst({
+      where: {
+        payment: {
+          installmentId,
+        },
         channel: NotificationChannel.WHATSAPP,
         status: NotificationStatus.SENT,
         createdAt: {

@@ -3,6 +3,8 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { createFeeRecordSchema } from '../../validation/feeRecord.validation';
 import { feeRecordService } from './feeRecord.service';
+import { buildPaginationMeta, parsePagination } from '../../utils/pagination';
+import { FeeRecordStatus } from '@prisma/client';
 
 export const feeRecordController = {
   async createFeeRecord(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -41,9 +43,40 @@ export const feeRecordController = {
         return;
       }
 
-      const feeRecords = await feeRecordService.getFeeRecords(schoolId);
+      const pagination = parsePagination({
+        page: req.query.page,
+        limit: req.query.limit,
+      });
 
-      res.status(200).json({ success: true, data: feeRecords });
+      const statusQuery = Array.isArray(req.query.status)
+        ? req.query.status[0]
+        : req.query.status;
+
+      const allowedStatuses: FeeRecordStatus[] = [
+        'PENDING',
+        'PARTIALLY_PAID',
+        'PAID',
+        'OVERDUE',
+      ];
+
+      const status =
+        typeof statusQuery === 'string' &&
+        allowedStatuses.includes(statusQuery as FeeRecordStatus)
+          ? (statusQuery as FeeRecordStatus)
+          : undefined;
+
+      const feeRecords = await feeRecordService.getFeeRecords(schoolId, {
+        status,
+        skip: pagination.skip,
+        limit: pagination.limit,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: feeRecords.data,
+        summary: feeRecords.summary,
+        pagination: buildPaginationMeta(pagination, feeRecords.total),
+      });
     } catch (error: unknown) {
       console.error('Error fetching fee records:', error);
       res.status(500).json({ success: false, message: 'Internal server error.' });
@@ -94,14 +127,26 @@ export const feeRecordController = {
         return;
       }
 
-      const installments = await feeRecordService.getInstallments(id as string, schoolId);
+      const pagination = parsePagination({
+        page: req.query.page,
+        limit: req.query.limit,
+      });
+
+      const installments = await feeRecordService.getInstallments(id as string, schoolId, {
+        skip: pagination.skip,
+        limit: pagination.limit,
+      });
 
       if (!installments) {
         res.status(404).json({ success: false, message: 'Fee record not found.' });
         return;
       }
 
-      res.status(200).json({ success: true, data: installments });
+      res.status(200).json({
+        success: true,
+        data: installments.data,
+        pagination: buildPaginationMeta(pagination, installments.total),
+      });
     } catch (error: unknown) {
       console.error('Error fetching installments:', error);
       res.status(500).json({ success: false, message: 'Internal server error.' });

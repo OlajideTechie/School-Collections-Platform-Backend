@@ -14,6 +14,17 @@ studentRouter.use(authenticateSchool);
  *     summary: Get student records for the logged-in school
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
  *     responses:
  *       200:
  *         description: Students retrieved successfully.
@@ -29,6 +40,21 @@ studentRouter.use(authenticateSchool);
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/Student'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *                     hasNextPage:
+ *                       type: boolean
+ *                     hasPreviousPage:
+ *                       type: boolean
  *       400:
  *         description: Invalid query parameter.
  *       500:

@@ -55,8 +55,25 @@ interface VerifyPendingPaymentsResult {
 }
 
 const DEFAULT_PAYMENT_VERIFICATION_WINDOW_MINUTES = 180;
+const DEFAULT_PAYMENT_INSTRUCTION_LEAD_DAYS = 3;
 const UPCOMING_REMINDER_DAYS = new Set([3, 1]);
 const OVERDUE_REMINDER_INTERVAL_DAYS = 3;
+
+function getPaymentInstructionLeadDays(): number {
+  const rawValue = process.env.PAYMENT_INSTRUCTION_LEAD_DAYS;
+
+  if (!rawValue) {
+    return DEFAULT_PAYMENT_INSTRUCTION_LEAD_DAYS;
+  }
+
+  const parsedValue = Number(rawValue);
+
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+    return DEFAULT_PAYMENT_INSTRUCTION_LEAD_DAYS;
+  }
+
+  return Math.floor(parsedValue);
+}
 
 function getPaymentVerificationWindowMinutes(): number {
   const rawValue = process.env.PAYMENT_VERIFICATION_WINDOW_MINUTES;
@@ -188,7 +205,73 @@ async function findPaymentByTransactionReference(transactionReference: string) {
 }
 
 export const paymentService = {
-  async generateInstallmentVirtualAccount(installmentId: string, schoolId: string) {
+  async generateVirtualAccountsForDueInstallments() {
+    const now = new Date();
+    const leadDays = getPaymentInstructionLeadDays();
+    const dueThreshold = new Date(now.getTime() + leadDays * 24 * 60 * 60 * 1000);
+
+    const installments = await prisma.installment.findMany({
+      where: {
+        status: {
+          not: 'PAID',
+        },
+        dueDate: {
+          lte: dueThreshold,
+        },
+      },
+      include: {
+        feeRecord: {
+          include: {
+            student: true,
+          },
+        },
+      },
+      orderBy: {
+        dueDate: 'asc',
+      },
+    });
+
+    let generated = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const installment of installments) {
+      try {
+        await this.generateInstallmentVirtualAccount(
+          installment.id,
+          installment.feeRecord.student.schoolId
+        );
+        generated += 1;
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === 'Pending payment already exists for this installment.'
+        ) {
+          skipped += 1;
+          continue;
+        }
+
+        failed += 1;
+        console.error(
+          `[PaymentInstructionJob] Failed to generate virtual account for installment ${installment.id}:`,
+          error
+        );
+      }
+    }
+
+    return {
+      checked: installments.length,
+      generated,
+      skipped,
+      failed,
+    };
+  },
+
+  async generateInstallmentVirtualAccount(
+    installmentId: string,
+    schoolId: string,
+    options?: { regenerateIfPending?: boolean }
+  ) {
     const installment = await prisma.installment.findUnique({
       where: { id: installmentId },
       include: {
@@ -210,6 +293,27 @@ export const paymentService = {
 
     if (installment.status === 'PAID') {
       throw new Error('Installment already paid.');
+    }
+
+    const existingPendingPayment = await prisma.payment.findFirst({
+      where: {
+        installmentId: installment.id,
+        status: PaymentStatus.PENDING,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (existingPendingPayment) {
+      if (options?.regenerateIfPending) {
+        await prisma.payment.update({
+          where: { id: existingPendingPayment.id },
+          data: { status: PaymentStatus.FAILED },
+        });
+      } else {
+        throw new Error('Pending payment already exists for this installment.');
+      }
     }
 
     const reference = createPaymentReference();
@@ -355,7 +459,11 @@ export const paymentService = {
   },
 
   // Retrieve payment history for a specific installment   
-  async getInstallmentPaymentHistory(installmentId: string, schoolId: string) {
+  async getInstallmentPaymentHistory(
+    installmentId: string,
+    schoolId: string,
+    options?: { skip?: number; limit?: number }
+  ) {
     const installment = await prisma.installment.findUnique({
       where: { id: installmentId },
       include: {
@@ -375,23 +483,29 @@ export const paymentService = {
       throw new Error('Installment does not belong to the authenticated school.');
     }
 
-    // Retrieve all payments associated with the installment, ordered by creation date
-    const payments = await prisma.payment.findMany({
-      where: { installmentId },
-      orderBy: { createdAt: 'asc' },
-    });
-   
-    // Map the payments to a simplified structure for the response
-    return payments.map((payment) => ({
-      message: `Payment for installment ${installment.sequence} has been processed.`,
-      id: payment.id,
-      reference: payment.reference,
-      transactionReference: payment.transactionReference,
-      amount: Number(payment.amount.toString()),
-      status: payment.status,
-      paidAt: payment.paidAt,
-      createdAt: payment.createdAt,
-    }));
+    const [payments, total] = await prisma.$transaction([
+      prisma.payment.findMany({
+        where: { installmentId },
+        orderBy: { createdAt: 'asc' },
+        skip: options?.skip,
+        take: options?.limit,
+      }),
+      prisma.payment.count({ where: { installmentId } }),
+    ]);
+
+    return {
+      data: payments.map((payment) => ({
+        message: `Payment for installment ${installment.sequence} has been processed.`,
+        id: payment.id,
+        reference: payment.reference,
+        transactionReference: payment.transactionReference,
+        amount: Number(payment.amount.toString()),
+        status: payment.status,
+        paidAt: payment.paidAt,
+        createdAt: payment.createdAt,
+      })),
+      total,
+    };
   },
 
   async verifyAlatpayTransaction(transactionReference: string, schoolId: string) {
@@ -416,6 +530,68 @@ export const paymentService = {
     return {
       ...updateResult,
       providerResponse,
+    };
+  },
+
+  async getPaymentsPaginated(
+    schoolId: string,
+    options: {
+      skip: number;
+      limit: number;
+      status?: PaymentStatus;
+    }
+  ) {
+    const where = {
+      installment: {
+        feeRecord: {
+          student: {
+            schoolId,
+          },
+        },
+      },
+      ...(options.status ? { status: options.status } : {}),
+    };
+
+    const [payments, total] = await prisma.$transaction([
+      prisma.payment.findMany({
+        where,
+        include: {
+          installment: {
+            include: {
+              feeRecord: {
+                include: {
+                  student: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: options.skip,
+        take: options.limit,
+      }),
+      prisma.payment.count({ where }),
+    ]);
+
+    return {
+      data: payments.map((payment) => ({
+        id: payment.id,
+        installmentId: payment.installmentId,
+        installmentSequence: payment.installment.sequence,
+        reference: payment.reference,
+        transactionReference: payment.transactionReference,
+        amount: Number(payment.amount.toString()),
+        status: payment.status,
+        paidAt: payment.paidAt,
+        createdAt: payment.createdAt,
+        student: {
+          id: payment.installment.feeRecord.student.id,
+          firstName: payment.installment.feeRecord.student.firstName,
+          lastName: payment.installment.feeRecord.student.lastName,
+          parentName: payment.installment.feeRecord.student.parentName,
+        },
+      })),
+      total,
     };
   },
 
@@ -617,30 +793,18 @@ export const paymentService = {
             student: true,
           },
         },
-        payments: {
-          where: {
-            status: {
-              not: PaymentStatus.SUCCESS,
-            },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-          take: 1,
-        },
       },
     });
 
     let remindersSent = 0;
 
     for (const installment of installments) {
-      const payment = installment.payments[0];
       const recipient =
         installment.feeRecord.student.parentPhone ||
         installment.feeRecord.student.parentEmail ||
         '';
 
-      if (!payment || !recipient) {
+      if (!recipient) {
         continue;
       }
 
@@ -649,30 +813,71 @@ export const paymentService = {
       const daysUntilDue = Math.ceil((dueDate.getTime() - now.getTime()) / dayInMs);
       const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / dayInMs);
 
+      const dueSoonTitle = `⏰ Payment Reminder (Due in ${daysUntilDue} day${daysUntilDue === 1 ? '' : 's'})`;
+      const overdueTitle = `⚠️ Overdue Reminder (Day ${daysOverdue})`;
+
       try {
         if (daysUntilDue >= 0 && UPCOMING_REMINDER_DAYS.has(daysUntilDue)) {
+          const alreadySent = await notificationService.wasInstallmentReminderSentToday(
+            installment.id,
+            dueSoonTitle
+          );
+
+          if (alreadySent) {
+            continue;
+          }
+
+          const refreshedPayment = await this.generateInstallmentVirtualAccount(
+            installment.id,
+            installment.feeRecord.student.schoolId,
+            { regenerateIfPending: true }
+          );
+
           await notificationService.sendDueSoonReminder({
-            paymentId: payment.id,
+            paymentId: refreshedPayment.paymentId,
+            installmentId: installment.id,
             recipient,
             parentName: installment.feeRecord.student.parentName,
             amount: Number(installment.amount.toString()),
             installmentSequence: installment.sequence,
             dueDate,
             daysUntilDue,
+            virtualAccountNumber: refreshedPayment.virtualBankAccountNumber,
+            expiryDate: refreshedPayment.expiresAt,
+            bankName: 'Wema Bank',
           });
           remindersSent += 1;
           continue;
         }
 
         if (daysOverdue >= 1 && daysOverdue % OVERDUE_REMINDER_INTERVAL_DAYS === 1) {
+          const alreadySent = await notificationService.wasInstallmentReminderSentToday(
+            installment.id,
+            overdueTitle
+          );
+
+          if (alreadySent) {
+            continue;
+          }
+
+          const refreshedPayment = await this.generateInstallmentVirtualAccount(
+            installment.id,
+            installment.feeRecord.student.schoolId,
+            { regenerateIfPending: true }
+          );
+
           await notificationService.sendOverdueReminder({
-            paymentId: payment.id,
+            paymentId: refreshedPayment.paymentId,
+            installmentId: installment.id,
             recipient,
             parentName: installment.feeRecord.student.parentName,
             amount: Number(installment.amount.toString()),
             installmentSequence: installment.sequence,
             dueDate,
             daysOverdue,
+            virtualAccountNumber: refreshedPayment.virtualBankAccountNumber,
+            expiryDate: refreshedPayment.expiresAt,
+            bankName: 'Wema Bank',
           });
           remindersSent += 1;
         }

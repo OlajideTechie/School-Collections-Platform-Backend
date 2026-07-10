@@ -1,207 +1,242 @@
-# 🎓 School Collections Platform
+## ScholarPay Backend
 
-A backend service that enables schools to collect tuition and other school-related payments through flexible installment plans powered by ALATPay.
+[![ALATPay](https://img.shields.io/badge/ALATPay-Integrated-00A859?style=for-the-badge)](https://alatpay.ng)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
+[![Express](https://img.shields.io/badge/Express-5-black?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org)
+[![Swagger](https://img.shields.io/badge/Swagger-OpenAPI-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)](https://swagger.io)
 
----
+ScholarPay is a school fee collection and installment management platform designed to simplify how schools collect tuition and other educational fees while improving transparency for parents.
 
-## 🚀 Project Overview
+The platform enables schools to create structured fee records and flexible installment plans, then automates the entire payment lifecycle—from scheduling payment reminders and generating secure virtual accounts to verifying payments and notifying parents in real time. This eliminates the need for manual follow-ups, reduces administrative overhead, and gives schools complete visibility into payment progress.
 
-The School Collections Platform helps schools manage fee collections while giving parents the flexibility to pay in installments.
+Built with a modern backend architecture using Node.js, Express, TypeScript, Prisma, and PostgreSQL, ScholarPay integrates with ALATPay for virtual account generation and payment verification, and leverages WhatsApp notifications to keep parents informed throughout the payment journey.
 
-Instead of requiring one-time payments, schools can configure installment plans, generate payment links, receive real-time payment updates via ALATPay webhooks, and automatically notify parents through WhatsApp.
+## Why ScholarPay
 
----
+Schools need predictable cash flow, while parents need flexible and transparent payment options. ScholarPay solves both sides of that challenge in one workflow.
 
-## ✨ Features
+- Reduces payment friction with installment-based collections instead of one-off lump-sum demands.
+- Improves collection success by automating reminders and payment verification.
+- Lowers admin workload by removing manual reconciliation and repetitive parent follow-ups.
+- Increases trust through clear parent notifications and real-time payment visibility.
+- Supports operational scale with standardized APIs, pagination, and background automation.
 
-### MVP
+## What This Backend Does
 
-- Student Management
-- Collection Plan Management
-- Installment Generation
-- ALATPay Payment Integration
-- Webhook Processing
-- Payment Tracking
-- Dashboard APIs
-- WhatsApp Notifications
+- Allows schools to register, authenticate, and manage students.
+- Lets schools create fee records with automatic installment generation.
+- Automatically generates virtual accounts close to installment due dates.
+- Verifies pending ALATPay transactions on a schedule.
+- Updates payment, installment, and fee record statuses automatically.
+- Sends payment instructions, confirmations, and reminders via WhatsApp Cloud API.
+- Exposes paginated API endpoints with a consistent collection response format.
 
----
+## Current Payment Lifecycle
 
-## 🚧 Future Features
+1. School creates fee record.
+2. Installments are generated automatically.
+3. Background instruction job checks due/near-due installments and generates virtual accounts.
+4. Parent receives payment instructions on WhatsApp.
+5. Parent transfers to the virtual account.
+6. Background verification job checks pending ALATPay transactions.
+7. Payment is marked successful, installment updated, fee record recalculated, confirmation sent.
 
-- Multi-school (Multi-tenant)
-- Parent Portal
-- School Configuration
-- Analytics Dashboard
-- PTA Payments
-- Hostel Payments
-- Excursion Payments
-- Transport Payments
-- Accounting Integrations
+## Tech Stack
 
----
+- Runtime: Node.js
+- API: Express 5
+- Language: TypeScript
+- ORM: Prisma
+- Database: PostgreSQL
+- Payment Provider: ALATPay Bank Transfer API
+- Messaging: WhatsApp Cloud API
+- Docs: Swagger (OpenAPI)
 
-## 🛠 Tech Stack
+## Project Structure
 
-Backend
-
-- Node.js
-- Express.js
-- TypeScript
-
-Database
-
-- PostgreSQL
-- Prisma ORM
-
-Payments
-
-- ALATPay
-
-Notifications
-
-- WhatsApp Cloud API
-
-Deployment
-
-- Railway
-- Neon PostgreSQL
-
-Documentation
-
-- Swagger
-
----
-
-## 📂 Project Structure
-```
+```text
 src/
-├── config/
-├── integrations/
-├── middleware/
-├── modules/
-├── routes/
-├── shared/
-├── utils/
-├── app.ts
-└── server.ts
+	app.ts
+	server.ts
+	config/
+	integrations/
+		alatpay/
+		whatsapp/
+	jobs/
+		paymentInstructionGeneration.job.ts
+		paymentVerification.job.ts
+	middleware/
+	modules/
+		auth/
+		fee-records/
+		notifications/
+		payments/
+		schools/
+		students/
+	routes/
+	utils/
+prisma/
+	schema.prisma
+	migrations/
+test/
 ```
 
----
+## API Conventions
 
-## 🏗 Architecture
-```
-School
+### Collection Response Shape
 
-↓
+All GET collection endpoints return:
 
-Student
-
-↓
-
-Collection Plan
-
-↓
-
-Installments
-
-↓
-
-Payment
-
-↓
-
-ALATPay
-
-↓
-
-Webhook
-
-↓
-
-Notification
-
-↓
-
-Dashboard
+```json
+{
+	"success": true,
+	"data": [],
+	"pagination": {
+		"page": 1,
+		"limit": 10,
+		"total": 100,
+		"totalPages": 10,
+		"hasNextPage": true,
+		"hasPreviousPage": false
+	}
+}
 ```
 
----
+### Pagination Query Parameters
 
-## 🚀 Getting Started
+- `page` (default: 1)
+- `limit` (default: 10, max: 100)
 
-Clone the repository
+## Key Endpoints
 
-```bash
-git clone <repository-url>
-```
+- `POST /schools` - Register school
+- `POST /schools/login` - Login
+- `POST /schools/logout` - Logout
+- `GET /students` - List students (paginated)
+- `POST /students` - Create student
+- `GET /fee-records` - List fee records (paginated, optional `status` filter)
+- `POST /fee-records` - Create fee record
+- `GET /fee-records/:id` - Fee record details
+- `GET /fee-records/:id/installments` - Installments for fee record (paginated)
+- `GET /payments` - List payments (paginated, optional `status` filter)
+- `GET /payments/installments/:installmentId/history` - Payment history (paginated)
+- `GET /notifications` - Notification timeline (paginated)
+- `GET /health` - Health check
 
-Install dependencies
+Swagger UI:
+
+- `GET /api-docs`
+
+## Scheduled Jobs
+
+### 1) Payment Instruction Generation Job
+
+Runs every 60 seconds.
+
+- Finds due/near-due unpaid installments.
+- Generates ALATPay virtual accounts.
+- Persists payment records.
+- Sends payment instruction messages.
+
+### 2) Payment Verification Job
+
+Runs every 60 seconds.
+
+- Fetches recent active pending payments.
+- Verifies status with ALATPay.
+- Marks payment success and sets `paidAt`.
+- Updates installment and fee record statuses.
+- Sends payment confirmations.
+- Regenerates fresh virtual account details for reminder cycles.
+- Sends due-soon and overdue reminders with updated account details.
+
+## Environment Variables
+
+Create a local `.env` file from `.env.example`.
+
+### Core
+
+- `DATABASE_URL`
+- `NODE_ENV`
+- `PORT`
+- `JWT_SECRET`
+- `FRONTEND_URLS`
+
+### ALATPay
+
+- `ALATPAY_BASE_URL`
+- `ALATPAY_PUBLIC_KEY`
+- `ALATPAY_SECRET_KEY`
+- `ALATPAY_WEBHOOK_SECRET`
+- `ALATPAY_CALLBACK_URL`
+- `ALATPAY_BUSINESS_ID`
+
+### WhatsApp Cloud API
+
+- `WHATSAPP_ACCESS_TOKEN`
+- `WHATSAPP_PHONE_NUMBER_ID`
+
+### Job Tuning
+
+- `PAYMENT_VERIFICATION_WINDOW_MINUTES` (default: `180`)
+- `PAYMENT_INSTRUCTION_LEAD_DAYS` (default: `3`)
+
+## Local Setup
+
+1. Install dependencies
 
 ```bash
 npm install
 ```
 
-Create `.env`
-
-```env
-DATABASE_URL=
-PORT=5000
-```
-
-Generate Prisma Client
+2. Configure environment
 
 ```bash
-npx prisma generate
+cp .env.example .env
 ```
 
-Run migrations
+3. Generate Prisma client
 
 ```bash
-npx prisma migrate dev
+npm run prisma:generate
 ```
 
-Start development server
+4. Run migrations
+
+```bash
+npm run prisma:migrate
+```
+
+5. Start development server
 
 ```bash
 npm run dev
 ```
 
----
+## Access Swagger Locally
 
-## API
+1. Ensure your server is running with `npm run dev`.
+2. Confirm your `PORT` in `.env` (default is `5000`).
+3. Open your browser and visit:
 
-Health Check
-
+```text
+http://localhost:5000/api-docs
 ```
-GET /health
+
+## Useful Commands
+
+```bash
+npm run dev
+npm run build
+npm run test
+npm run lint
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:studio
 ```
-
----
-
-## Deployment
-
-Frontend
-
-- Vercel
-
-Backend
-
-- Railway
-
-Database
-
-- Neon
-
----
-
-## Team
-
-Backend
-
-Frontend
-
----
 
 ## License
 

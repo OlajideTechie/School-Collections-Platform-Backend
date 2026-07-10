@@ -7,6 +7,8 @@ import studentRouter from "./routes/student.routes";
 import schoolRouter from "./routes/school.routes";
 import feeRecordsRouter from "./routes/fee-records.routes";
 import paymentRouter from "./routes/payments.routes";
+import notificationsRouter from "./routes/notifications.routes";
+import { startPaymentInstructionGenerationJob } from "./jobs/paymentInstructionGeneration.job";
 import { startPaymentVerificationJob } from "./jobs/paymentVerification.job";
 
 const app = express();
@@ -77,7 +79,9 @@ app.use('/students', studentRouter);
 app.use('/schools', schoolRouter);
 app.use('/fee-records', feeRecordsRouter);
 app.use('/payments', paymentRouter);
+app.use('/notifications', notificationsRouter);
 
+startPaymentInstructionGenerationJob();
 startPaymentVerificationJob();
 
 export default app;
