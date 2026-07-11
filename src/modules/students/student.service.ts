@@ -1,5 +1,34 @@
+import type { Prisma } from '@prisma/client';
 import prisma from '../../config/database';
 import { CreateStudentInput } from '../../validation/student.validation';
+
+interface StudentListFilters {
+  search?: string;
+}
+
+function buildStudentWhere(
+  schoolId: string,
+  filters?: StudentListFilters
+): Prisma.StudentWhereInput {
+  const searchTerms =
+    filters?.search
+      ?.trim()
+      .split(/\s+/)
+      .filter((term) => term.length > 0) ?? [];
+
+  const where: Prisma.StudentWhereInput = { schoolId };
+
+  if (searchTerms.length > 0) {
+    where.AND = searchTerms.map((term) => ({
+      OR: [
+        { firstName: { contains: term, mode: 'insensitive' } },
+        { lastName: { contains: term, mode: 'insensitive' } },
+      ],
+    }));
+  }
+
+  return where;
+}
 
 export const studentService = {
   /**
@@ -30,18 +59,19 @@ export const studentService = {
     });
   },
 
-  async getStudents(schoolId: string) {
+  async getStudents(schoolId: string, filters?: StudentListFilters) {
     return prisma.student.findMany({
-      where: { schoolId },
+      where: buildStudentWhere(schoolId, filters),
       orderBy: { createdAt: 'desc' },
     });
   },
 
   async getStudentsPaginated(
     schoolId: string,
-    pagination: { skip: number; limit: number }
+    pagination: { skip: number; limit: number },
+    filters?: StudentListFilters
   ) {
-    const where = { schoolId };
+    const where = buildStudentWhere(schoolId, filters);
 
     const [data, total] = await prisma.$transaction([
       prisma.student.findMany({
