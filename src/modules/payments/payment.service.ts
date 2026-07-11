@@ -19,7 +19,11 @@ type PaymentWithInstallment = Prisma.PaymentGetPayload<{
       include: {
         feeRecord: {
           include: {
-            student: true;
+            student: {
+              include: {
+                school: true;
+              };
+            };
           };
         };
       };
@@ -195,7 +199,11 @@ async function findPaymentByTransactionReference(transactionReference: string) {
         include: {
           feeRecord: {
             include: {
-              student: true,
+              student: {
+                include: {
+                  school: true,
+                },
+              },
             },
           },
         },
@@ -277,7 +285,11 @@ export const paymentService = {
       include: {
         feeRecord: {
           include: {
-            student: true,
+            student: {
+              include: {
+                school: true,
+              },
+            },
           },
         },
       },
@@ -368,6 +380,7 @@ export const paymentService = {
       paymentId: payment.id,
       recipient: customerPhone || customerEmail,
       parentName: student.parentName,
+      schoolName: student.school.name,
       amount: Number(installment.amount.toString()),
       virtualAccountNumber: virtualAccount.virtualBankAccountNumber,
       expiryDate: virtualAccount.expiresAt,
@@ -411,7 +424,11 @@ export const paymentService = {
           include: {
             feeRecord: {
               include: {
-                student: true,
+                student: {
+                  include: {
+                    school: true,
+                  },
+                },
               },
             },
           },
@@ -716,6 +733,7 @@ export const paymentService = {
           payment.installment.feeRecord.student.parentEmail ||
           '',
         parentName: payment.installment.feeRecord.student.parentName,
+        schoolName: payment.installment.feeRecord.student.school.name,
         amount: Number(payment.amount.toString()),
         installmentSequence: payment.installment.sequence,
         remainingBalance: result.remainingBalance ?? 0,
@@ -790,7 +808,11 @@ export const paymentService = {
       include: {
         feeRecord: {
           include: {
-            student: true,
+            student: {
+              include: {
+                school: true,
+              },
+            },
           },
         },
       },
@@ -838,6 +860,7 @@ export const paymentService = {
             installmentId: installment.id,
             recipient,
             parentName: installment.feeRecord.student.parentName,
+            schoolName: installment.feeRecord.student.school.name,
             amount: Number(installment.amount.toString()),
             installmentSequence: installment.sequence,
             dueDate,
@@ -871,6 +894,7 @@ export const paymentService = {
             installmentId: installment.id,
             recipient,
             parentName: installment.feeRecord.student.parentName,
+            schoolName: installment.feeRecord.student.school.name,
             amount: Number(installment.amount.toString()),
             installmentSequence: installment.sequence,
             dueDate,
