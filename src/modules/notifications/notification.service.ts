@@ -12,6 +12,7 @@ interface PaymentInstructionsInput {
   paymentId: string;
   recipient: string;
   parentName: string;
+  schoolName?: string;
   amount: number;
   virtualAccountNumber: string;
   expiryDate: Date | string;
@@ -22,6 +23,7 @@ interface PaymentConfirmationInput {
   paymentId: string;
   recipient: string;
   parentName: string;
+  schoolName?: string;
   amount: number;
   installmentSequence: number;
   remainingBalance: number;
@@ -32,6 +34,7 @@ interface DueSoonReminderInput {
   installmentId: string;
   recipient: string;
   parentName: string;
+  schoolName?: string;
   amount: number;
   installmentSequence: number;
   dueDate: Date | string;
@@ -46,6 +49,7 @@ interface OverdueReminderInput {
   installmentId: string;
   recipient: string;
   parentName: string;
+  schoolName?: string;
   amount: number;
   installmentSequence: number;
   dueDate: Date | string;
@@ -187,7 +191,6 @@ export const notificationService = {
   async sendPaymentInstructions(input: PaymentInstructionsInput) {
     const bankName = input.bankName ?? 'Wema Bank';
     const message = [
-      '🎓 ScholarPay',
       '',
       `Hello ${input.parentName},`,
       '',
@@ -200,10 +203,14 @@ export const notificationService = {
       'Account Number:',
       input.virtualAccountNumber,
       '',
-      'This account expires on:',
+      'Please complete your payment before:',
       formatWATDate(input.expiryDate),
       '',
-      'Please complete your transfer before it expires.',
+      'Thank you.',
+
+      input.schoolName ? `\n${input.schoolName}` : '',
+
+      'Powered by ScholarPay.',
     ].join('\n');
 
     return this.dispatchNotification({
@@ -220,14 +227,18 @@ export const notificationService = {
       '',
       `Hello ${input.parentName},`,
       '',
-      `We've received your payment of ${formatAmount(input.amount)}.`,
+      `We've successfully received your payment of ${formatAmount(input.amount)}.`,
       '',
       `Installment ${input.installmentSequence} has been marked as PAID.`,
       '',
       'Remaining Balance:',
       formatAmount(input.remainingBalance),
       '',
-      'Thank you for using ScholarPay.',
+      'Thank you.',
+
+      input.schoolName ? `\n${input.schoolName}` : '',
+
+      'Powered by ScholarPay.',
     ].join('\n');
 
     return this.dispatchNotification({
@@ -257,16 +268,20 @@ export const notificationService = {
       '',
       `Hello ${input.parentName},`,
       '',
-      `Installment ${input.installmentSequence} is due soon.`,
+      `Your Installment ${input.installmentSequence} is due soon.`,
       `Amount: ${formatAmount(input.amount)}`,
       `Due Date: ${formatWATDate(input.dueDate)}`,
       '',
-      'Use this refreshed payment account:',
+      'Kindly complete your payment using the following account:',
       `Bank: ${bankName}`,
       `Account Number: ${input.virtualAccountNumber}`,
       `Expires: ${formatWATDate(input.expiryDate)}`,
       '',
-      'Please complete your transfer before the due date.',
+      'Thank you.',
+
+      input.schoolName ? `\n${input.schoolName}` : '',
+
+      'Powered by ScholarPay.',
     ].join('\n');
 
     return this.dispatchNotification({
@@ -306,6 +321,12 @@ export const notificationService = {
       `Expires: ${formatWATDate(input.expiryDate)}`,
       '',
       'Please make your payment as soon as possible.',
+
+      'Thank you.',
+
+      input.schoolName ? `\n${input.schoolName}` : '',
+
+      'Powered by ScholarPay.',
     ].join('\n');
 
     return this.dispatchNotification({
