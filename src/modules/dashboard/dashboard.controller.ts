@@ -2,15 +2,40 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { dashboardService } from './dashboard.service';
 
-function parseRecentPaymentsLimit(value: unknown): number | undefined {
+const DEFAULT_RECENT_PAYMENTS_PAGE = 1;
+const DEFAULT_RECENT_PAYMENTS_LIMIT = 5;
+const MAX_RECENT_PAYMENTS_LIMIT = 20;
+
+function parsePositiveInt(value: unknown, fallback: number): number {
   const normalized = Array.isArray(value) ? value[0] : value;
   const parsed = Number(normalized);
 
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    return undefined;
+    return fallback;
   }
 
   return Math.floor(parsed);
+}
+
+function parseRecentPaymentsPagination(input: {
+  page?: unknown;
+  limit?: unknown;
+  recentLimit?: unknown;
+}) {
+  const page = parsePositiveInt(input.page, DEFAULT_RECENT_PAYMENTS_PAGE);
+  const limit = Math.min(
+    parsePositiveInt(
+      input.limit ?? input.recentLimit,
+      DEFAULT_RECENT_PAYMENTS_LIMIT
+    ),
+    MAX_RECENT_PAYMENTS_LIMIT
+  );
+
+  return {
+    page,
+    limit,
+    skip: (page - 1) * limit,
+  };
 }
 
 export const dashboardController = {
@@ -23,7 +48,11 @@ export const dashboardController = {
       }
 
       const overview = await dashboardService.getOverview(schoolId, {
-        recentPaymentsLimit: parseRecentPaymentsLimit(req.query.recentLimit),
+        recentPaymentsPagination: parseRecentPaymentsPagination({
+          page: req.query.page,
+          limit: req.query.limit,
+          recentLimit: req.query.recentLimit,
+        }),
       });
 
       res.status(200).json({

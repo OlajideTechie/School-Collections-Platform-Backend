@@ -14,6 +14,21 @@ const router = Router();
  *     security:
  *       - bearerAuth: []
  *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: Page number for recent payments. Defaults to 1.
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 20
+ *         description: Number of recent payments per page. Defaults to 5.
  *       - name: recentLimit
  *         in: query
  *         required: false
@@ -21,7 +36,8 @@ const router = Router();
  *           type: integer
  *           minimum: 1
  *           maximum: 20
- *         description: Number of recent payments to return. Defaults to 5.
+ *         deprecated: true
+ *         description: Deprecated alias for limit. Ignored when limit is provided.
  *     responses:
  *       200:
  *         description: Dashboard summary returned successfully.
@@ -105,6 +121,21 @@ const router = Router();
  *                           createdAt:
  *                             type: string
  *                             format: date-time
+ *                     recentPaymentsPagination:
+ *                       type: object
+ *                       properties:
+ *                         page:
+ *                           type: integer
+ *                         limit:
+ *                           type: integer
+ *                         total:
+ *                           type: integer
+ *                         totalPages:
+ *                           type: integer
+ *                         hasNextPage:
+ *                           type: boolean
+ *                         hasPreviousPage:
+ *                           type: boolean
  *       401:
  *         description: Unauthorized.
  */

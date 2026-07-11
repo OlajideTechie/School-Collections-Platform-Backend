@@ -25,6 +25,12 @@ studentRouter.use(authenticateSchool);
  *         required: false
  *         schema:
  *           type: integer
+ *       - name: search
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Search students by first name, last name, or both names.
  *     responses:
  *       200:
  *         description: Students retrieved successfully.

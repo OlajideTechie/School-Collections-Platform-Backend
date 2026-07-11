@@ -1,16 +1,47 @@
 import { FeeRecordStatus, PaymentStatus } from '@prisma/client';
 import prisma from '../../config/database';
+import { buildPaginationMeta, type PaginationQuery } from '../../utils/pagination';
 
 const DEFAULT_RECENT_PAYMENTS_LIMIT = 5;
 const MAX_RECENT_PAYMENTS_LIMIT = 20;
 const DUE_SOON_WINDOW_DAYS = 7;
 
-function normalizeRecentPaymentsLimit(limit?: number): number {
-  if (!Number.isFinite(limit) || !limit || limit <= 0) {
-    return DEFAULT_RECENT_PAYMENTS_LIMIT;
+interface DashboardOverviewOptions {
+  recentPaymentsPagination?: Partial<PaginationQuery>;
+  recentPaymentsLimit?: number;
+}
+
+function normalizePositiveInt(value: number | undefined, fallback: number): number {
+  if (!Number.isFinite(value) || !value || value <= 0) {
+    return fallback;
   }
 
-  return Math.min(Math.floor(limit), MAX_RECENT_PAYMENTS_LIMIT);
+  return Math.floor(value);
+}
+
+function normalizeRecentPaymentsPagination(
+  options?: DashboardOverviewOptions
+): PaginationQuery {
+  const page = normalizePositiveInt(
+    options?.recentPaymentsPagination?.page,
+    1
+  );
+  const limit = Math.min(
+    normalizePositiveInt(
+      options?.recentPaymentsPagination?.limit ?? options?.recentPaymentsLimit,
+      DEFAULT_RECENT_PAYMENTS_LIMIT
+    ),
+    MAX_RECENT_PAYMENTS_LIMIT
+  );
+
+  return {
+    page,
+    limit,
+    skip: normalizePositiveInt(
+      options?.recentPaymentsPagination?.skip,
+      (page - 1) * limit
+    ),
+  };
 }
 
 function toPercentage(value: number, total: number): number {
@@ -22,10 +53,9 @@ function toPercentage(value: number, total: number): number {
 }
 
 export const dashboardService = {
-  async getOverview(schoolId: string, options?: { recentPaymentsLimit?: number }) {
-    const recentPaymentsLimit = normalizeRecentPaymentsLimit(
-      options?.recentPaymentsLimit
-    );
+  async getOverview(schoolId: string, options?: DashboardOverviewOptions) {
+    const recentPaymentsPagination =
+      normalizeRecentPaymentsPagination(options);
     const now = new Date();
     const dueSoonThreshold = new Date(
       now.getTime() + DUE_SOON_WINDOW_DAYS * 24 * 60 * 60 * 1000
@@ -153,13 +183,17 @@ export const dashboardService = {
           },
           orderBy: [
             {
-              paidAt: 'desc',
+              paidAt: {
+                sort: 'desc',
+                nulls: 'last',
+              },
             },
             {
               createdAt: 'desc',
             },
           ],
-          take: recentPaymentsLimit,
+          skip: recentPaymentsPagination.skip,
+          take: recentPaymentsPagination.limit,
         }),
       ]);
 
@@ -217,6 +251,10 @@ export const dashboardService = {
         pendingPaymentsCount: toPercentage(pendingPaymentsCount, paymentsCount),
       },
       feeRecordStatusBreakdown,
+      recentPaymentsPagination: buildPaginationMeta(
+        recentPaymentsPagination,
+        paymentsCount
+      ),
       recentPayments: recentPayments.map((payment) => ({
         id: payment.id,
         reference: payment.reference,

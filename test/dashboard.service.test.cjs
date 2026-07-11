@@ -102,12 +102,31 @@ test('dashboard overview returns count-based metrics as percentages', async () =
 
   try {
     const overview = await dashboardService.getOverview('school-1', {
-      recentPaymentsLimit: 10,
+      recentPaymentsPagination: {
+        page: 2,
+        limit: 3,
+        skip: 3,
+      },
     });
 
     assert.equal(
       calls.find((call) => call.method === '$transaction').operations.length,
       9
+    );
+    assert.deepEqual(
+      calls.find((call) => call.method === 'payment.findMany').args.orderBy,
+      [
+        { paidAt: { sort: 'desc', nulls: 'last' } },
+        { createdAt: 'desc' },
+      ]
+    );
+    assert.equal(
+      calls.find((call) => call.method === 'payment.findMany').args.skip,
+      3
+    );
+    assert.equal(
+      calls.find((call) => call.method === 'payment.findMany').args.take,
+      3
     );
     assert.deepEqual(overview.totals, {
       totalCollected: 450,
@@ -123,6 +142,14 @@ test('dashboard overview returns count-based metrics as percentages', async () =
       partiallyPaid: 25,
       paid: 25,
       overdue: 0,
+    });
+    assert.deepEqual(overview.recentPaymentsPagination, {
+      page: 2,
+      limit: 3,
+      total: 8,
+      totalPages: 3,
+      hasNextPage: true,
+      hasPreviousPage: true,
     });
     assert.equal(overview.recentPayments[0].amount, 50);
   } finally {
@@ -160,6 +187,14 @@ test('dashboard overview returns zero percentages when denominators are empty', 
       partiallyPaid: 0,
       paid: 0,
       overdue: 0,
+    });
+    assert.deepEqual(overview.recentPaymentsPagination, {
+      page: 1,
+      limit: 5,
+      total: 0,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
     });
   } finally {
     restore();

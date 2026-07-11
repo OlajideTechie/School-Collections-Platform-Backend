@@ -8,10 +8,21 @@ import {
 import { studentService } from './student.service';
 import { buildPaginationMeta, parsePagination } from '../../utils/pagination';
 
+function parseStudentSearch(value: unknown): string | undefined {
+  const normalized = Array.isArray(value) ? value[0] : value;
+
+  if (typeof normalized !== 'string') {
+    return undefined;
+  }
+
+  const search = normalized.trim();
+  return search.length > 0 ? search : undefined;
+}
+
 export const studentController = {
   /**
    * Handles the request to fetch student records.
-   * Supports optional filtering by schoolId.
+   * Supports optional filtering by student name.
    */
   async getStudents(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
@@ -24,7 +35,12 @@ export const studentController = {
         page: req.query.page,
         limit: req.query.limit,
       });
-      const students = await studentService.getStudentsPaginated(schoolId, pagination);
+      const search = parseStudentSearch(req.query.search);
+      const students = await studentService.getStudentsPaginated(
+        schoolId,
+        pagination,
+        search ? { search } : undefined
+      );
 
       res.status(200).json({
         success: true,
