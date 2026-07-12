@@ -3,6 +3,27 @@ import { CreateFeeRecordInput } from '../../validation/feeRecord.validation';
 import { InstallmentGeneratorService } from './installmentGenerator.service';
 import { FeeRecordStatus } from '@prisma/client';
 
+// Helper functions to calculate paid amounts and map fee records
+function getInstallmentPaidAmount(installment: any): number {
+  return (
+    installment.payments?.reduce((paid: number, payment: any) => {
+      if (payment.status !== 'SUCCESS') {
+        return paid;
+      }
+
+      return paid + Number(payment.amount.toString());
+    }, 0) ?? 0
+  );
+}
+
+function hasSuccessfulPayment(installment: any): boolean {
+  return (
+    installment.payments?.some(
+      (payment: any) => payment.status === 'SUCCESS'
+    ) ?? false
+  );
+}
+
 function mapFeeRecord(record: any) {
   const installments = record.installments.map((ins: any) => ({
     id: ins.id,
@@ -13,17 +34,21 @@ function mapFeeRecord(record: any) {
     virtualAccount: null,
   }));
 
-  const amountPaid = record.installments.reduce((sum: number, ins: any) => {
-    const installmentPaid = ins.payments?.reduce((paid: number, p: any) => paid + Number(p.amount.toString()), 0) ?? 0;
-    return sum + installmentPaid;
-  }, 0);
+  const amountPaid = record.installments.reduce(
+    (sum: number, installment: any) => sum + getInstallmentPaidAmount(installment),
+    0
+  );
+
+  const installmentsPaid = record.installments.filter((installment: any) =>
+    hasSuccessfulPayment(installment)
+  ).length;
 
   const paymentSummary = {
     totalAmount: Number(record.totalAmount.toString()),
     amountPaid,
     outstandingBalance: Number(record.totalAmount.toString()) - amountPaid,
-    installmentsPaid: record.installments.filter((ins: any) => ins.payments?.length > 0).length,
-    installmentsPending: record.installments.filter((ins: any) => ins.payments?.length === 0).length,
+    installmentsPaid,
+    installmentsPending: record.installments.length - installmentsPaid,
   };
 
   return {
@@ -117,17 +142,21 @@ export const feeRecordService = {
       virtualAccount: null,
     }));
 
-    const amountPaid = result.installments.reduce((sum: number, ins: any) => {
-      const installmentPaid = ins.payments?.reduce((paid: number, p: any) => paid + Number(p.amount.toString()), 0) ?? 0;
-      return sum + installmentPaid;
-    }, 0);
+    const amountPaid = result.installments.reduce(
+      (sum: number, installment: any) => sum + getInstallmentPaidAmount(installment),
+      0
+    );
+
+    const installmentsPaid = result.installments.filter((installment: any) =>
+      hasSuccessfulPayment(installment)
+    ).length;
 
     const paymentSummary = {
       totalAmount: Number(result.totalAmount.toString()),
       amountPaid,
       outstandingBalance: Number(result.totalAmount.toString()) - amountPaid,
-      installmentsPaid: result.installments.filter((ins: any) => ins.payments?.length > 0).length,
-      installmentsPending: result.installments.filter((ins: any) => ins.payments?.length === 0).length,
+      installmentsPaid,
+      installmentsPending: result.installments.length - installmentsPaid,
     };
 
     const feeRecord = {
@@ -243,17 +272,21 @@ export const feeRecordService = {
       virtualAccount: null,
     }));
 
-    const amountPaid = record.installments.reduce((sum: number, ins: any) => {
-      const installmentPaid = ins.payments?.reduce((paid: number, p: any) => paid + Number(p.amount.toString()), 0) ?? 0;
-      return sum + installmentPaid;
-    }, 0);
+    const amountPaid = record.installments.reduce(
+      (sum: number, installment: any) => sum + getInstallmentPaidAmount(installment),
+      0
+    );
+
+    const installmentsPaid = record.installments.filter((installment: any) =>
+      hasSuccessfulPayment(installment)
+    ).length;
 
     const paymentSummary = {
       totalAmount: Number(record.totalAmount.toString()),
       amountPaid,
       outstandingBalance: Number(record.totalAmount.toString()) - amountPaid,
-      installmentsPaid: record.installments.filter((ins: any) => ins.payments?.length > 0).length,
-      installmentsPending: record.installments.filter((ins: any) => ins.payments?.length === 0).length,
+      installmentsPaid,
+      installmentsPending: record.installments.length - installmentsPaid,
     };
 
     return {
