@@ -11,6 +11,15 @@ interface DashboardOverviewOptions {
   recentPaymentsLimit?: number;
 }
 
+interface DashboardBalanceFeeRecord {
+  totalAmount: { toString(): string };
+  installments: Array<{
+    payments: Array<{
+      amount: { toString(): string };
+    }>;
+  }>;
+}
+
 function normalizePositiveInt(value: number | undefined, fallback: number): number {
   if (!Number.isFinite(value) || !value || value <= 0) {
     return fallback;
@@ -52,6 +61,53 @@ function toPercentage(value: number, total: number): number {
   return Number(((value / total) * 100).toFixed(2));
 }
 
+function toAmount(value: { toString(): string } | null | undefined): number {
+  return Number(value?.toString() ?? 0);
+}
+
+function roundCurrency(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function calculateBalanceSummary(feeRecords: DashboardBalanceFeeRecord[]) {
+  return feeRecords.reduce(
+    (summary, feeRecord) => {
+      const totalAmount = toAmount(feeRecord.totalAmount);
+      const paidAmount = feeRecord.installments.reduce(
+        (installmentTotal, installment) =>
+          installmentTotal +
+          installment.payments.reduce(
+            (paymentTotal, payment) => paymentTotal + toAmount(payment.amount),
+            0
+          ),
+        0
+      );
+      const outstandingBalance = Math.max(totalAmount - paidAmount, 0);
+
+      summary.totalBilled += totalAmount;
+      summary.totalCollected += paidAmount;
+      summary.totalOutstandingBalance += outstandingBalance;
+
+      if (outstandingBalance > 0 && paidAmount > 0) {
+        summary.partiallyPaidOutstandingBalance += outstandingBalance;
+      }
+
+      if (outstandingBalance > 0 && paidAmount === 0) {
+        summary.fullyUnpaidOutstandingBalance += outstandingBalance;
+      }
+
+      return summary;
+    },
+    {
+      totalBilled: 0,
+      totalCollected: 0,
+      totalOutstandingBalance: 0,
+      fullyUnpaidOutstandingBalance: 0,
+      partiallyPaidOutstandingBalance: 0,
+    }
+  );
+}
+
 export const dashboardService = {
   async getOverview(schoolId: string, options?: DashboardOverviewOptions) {
     const recentPaymentsPagination =
@@ -72,8 +128,7 @@ export const dashboardService = {
     };
 
     const [
-      paymentSummary,
-      feeRecordSummary,
+      feeRecordsForBalances,
       feeRecordStatusCounts,
       overdueInstallmentSummary,
       dueSoonInstallmentsCount,
@@ -83,23 +138,26 @@ export const dashboardService = {
       recentPayments,
     ] =
       await prisma.$transaction([
-        prisma.payment.aggregate({
-          where: {
-            ...schoolScopedPaymentWhere,
-            status: PaymentStatus.SUCCESS,
-          },
-          _sum: {
-            amount: true,
-          },
-        }),
-        prisma.feeRecord.aggregate({
+        prisma.feeRecord.findMany({
           where: {
             student: {
               schoolId,
             },
           },
-          _sum: {
+          select: {
             totalAmount: true,
+            installments: {
+              select: {
+                payments: {
+                  where: {
+                    status: PaymentStatus.SUCCESS,
+                  },
+                  select: {
+                    amount: true,
+                  },
+                },
+              },
+            },
           },
         }),
         prisma.feeRecord.groupBy({
@@ -197,9 +255,12 @@ export const dashboardService = {
         }),
       ]);
 
-    const totalCollected = Number(paymentSummary._sum.amount?.toString() ?? 0);
-    const totalBilled = Number(feeRecordSummary._sum.totalAmount?.toString() ?? 0);
-    const totalOutstandingBalance = Math.max(totalBilled - totalCollected, 0);
+    const balanceSummary = calculateBalanceSummary(feeRecordsForBalances);
+    const totalCollected = roundCurrency(balanceSummary.totalCollected);
+    const totalBilled = roundCurrency(balanceSummary.totalBilled);
+    const totalOutstandingBalance = roundCurrency(
+      balanceSummary.totalOutstandingBalance
+    );
     const collectionRate = totalBilled > 0
       ? Number(((totalCollected / totalBilled) * 100).toFixed(2))
       : 0;
@@ -236,19 +297,36 @@ export const dashboardService = {
       paid: toPercentage(feeRecordStatusCountsByStatus.paid, totalFeeRecords),
       overdue: toPercentage(feeRecordStatusCountsByStatus.overdue, totalFeeRecords),
     };
+    const dueSoonInstallmentsPercentage = toPercentage(
+      dueSoonInstallmentsCount,
+      unpaidInstallmentsCount
+    );
+    const pendingPaymentsPercentage = toPercentage(
+      pendingPaymentsCount,
+      paymentsCount
+    );
 
     return {
       totals: {
+        totalBilled,
         totalCollected,
         totalOutstandingBalance,
-        totalPartialPayments: feeRecordStatusBreakdown.partiallyPaid,
+        fullyUnpaidOutstandingBalance: roundCurrency(
+          balanceSummary.fullyUnpaidOutstandingBalance
+        ),
+        partiallyPaidOutstandingBalance: roundCurrency(
+          balanceSummary.partiallyPaidOutstandingBalance
+        ),
+        partiallyPaidFeeRecordsCount:
+          feeRecordStatusCountsByStatus.partiallyPaid,
+        partiallyPaidFeeRecordsPercentage:
+          feeRecordStatusBreakdown.partiallyPaid,
         collectionRate,
         overdueAmount,
-        dueSoonInstallmentsCount: toPercentage(
-          dueSoonInstallmentsCount,
-          unpaidInstallmentsCount
-        ),
-        pendingPaymentsCount: toPercentage(pendingPaymentsCount, paymentsCount),
+        dueSoonInstallmentsCount,
+        dueSoonInstallmentsPercentage,
+        pendingPaymentsCount,
+        pendingPaymentsPercentage,
       },
       feeRecordStatusBreakdown,
       recentPaymentsPagination: buildPaginationMeta(

@@ -19,6 +19,7 @@ function mockDashboardPrisma(transactionResults) {
     paymentCount: prisma.payment.count,
     paymentFindMany: prisma.payment.findMany,
     feeRecordAggregate: prisma.feeRecord.aggregate,
+    feeRecordFindMany: prisma.feeRecord.findMany,
     feeRecordGroupBy: prisma.feeRecord.groupBy,
     installmentAggregate: prisma.installment.aggregate,
     installmentCount: prisma.installment.count,
@@ -33,6 +34,7 @@ function mockDashboardPrisma(transactionResults) {
   prisma.payment.count = operation('payment.count');
   prisma.payment.findMany = operation('payment.findMany');
   prisma.feeRecord.aggregate = operation('feeRecord.aggregate');
+  prisma.feeRecord.findMany = operation('feeRecord.findMany');
   prisma.feeRecord.groupBy = operation('feeRecord.groupBy');
   prisma.installment.aggregate = operation('installment.aggregate');
   prisma.installment.count = operation('installment.count');
@@ -49,6 +51,7 @@ function mockDashboardPrisma(transactionResults) {
       prisma.payment.count = originals.paymentCount;
       prisma.payment.findMany = originals.paymentFindMany;
       prisma.feeRecord.aggregate = originals.feeRecordAggregate;
+      prisma.feeRecord.findMany = originals.feeRecordFindMany;
       prisma.feeRecord.groupBy = originals.feeRecordGroupBy;
       prisma.installment.aggregate = originals.installmentAggregate;
       prisma.installment.count = originals.installmentCount;
@@ -56,7 +59,7 @@ function mockDashboardPrisma(transactionResults) {
   };
 }
 
-test('dashboard overview returns count-based metrics as percentages', async () => {
+test('dashboard overview splits outstanding balances and returns clear metrics', async () => {
   const paidAt = new Date('2026-07-01T10:00:00.000Z');
   const dueDate = new Date('2026-07-15T10:00:00.000Z');
   const recentPayment = {
@@ -84,9 +87,34 @@ test('dashboard overview returns count-based metrics as percentages', async () =
       },
     },
   };
+  const feeRecordsForBalances = [
+    {
+      totalAmount: decimal(200),
+      installments: [
+        {
+          payments: [{ amount: decimal(100) }],
+        },
+      ],
+    },
+    {
+      totalAmount: decimal(200),
+      installments: [{ payments: [] }],
+    },
+    {
+      totalAmount: decimal(250),
+      installments: [{ payments: [] }],
+    },
+    {
+      totalAmount: decimal(350),
+      installments: [
+        {
+          payments: [{ amount: decimal(350) }],
+        },
+      ],
+    },
+  ];
   const { calls, restore } = mockDashboardPrisma([
-    { _sum: { amount: decimal(450) } },
-    { _sum: { totalAmount: decimal(1000) } },
+    feeRecordsForBalances,
     [
       { status: 'PENDING', _count: { _all: 2 } },
       { status: 'PARTIALLY_PAID', _count: { _all: 1 } },
@@ -111,7 +139,7 @@ test('dashboard overview returns count-based metrics as percentages', async () =
 
     assert.equal(
       calls.find((call) => call.method === '$transaction').operations.length,
-      9
+      8
     );
     assert.deepEqual(
       calls.find((call) => call.method === 'payment.findMany').args.orderBy,
@@ -129,13 +157,19 @@ test('dashboard overview returns count-based metrics as percentages', async () =
       3
     );
     assert.deepEqual(overview.totals, {
+      totalBilled: 1000,
       totalCollected: 450,
       totalOutstandingBalance: 550,
-      totalPartialPayments: 25,
+      fullyUnpaidOutstandingBalance: 450,
+      partiallyPaidOutstandingBalance: 100,
+      partiallyPaidFeeRecordsCount: 1,
+      partiallyPaidFeeRecordsPercentage: 25,
       collectionRate: 45,
       overdueAmount: 250,
-      dueSoonInstallmentsCount: 50,
-      pendingPaymentsCount: 25,
+      dueSoonInstallmentsCount: 3,
+      dueSoonInstallmentsPercentage: 50,
+      pendingPaymentsCount: 2,
+      pendingPaymentsPercentage: 25,
     });
     assert.deepEqual(overview.feeRecordStatusBreakdown, {
       pending: 50,
@@ -159,8 +193,7 @@ test('dashboard overview returns count-based metrics as percentages', async () =
 
 test('dashboard overview returns zero percentages when denominators are empty', async () => {
   const { restore } = mockDashboardPrisma([
-    { _sum: { amount: null } },
-    { _sum: { totalAmount: null } },
+    [],
     [],
     { _sum: { amount: null } },
     0,
@@ -174,13 +207,19 @@ test('dashboard overview returns zero percentages when denominators are empty', 
     const overview = await dashboardService.getOverview('school-1');
 
     assert.deepEqual(overview.totals, {
+      totalBilled: 0,
       totalCollected: 0,
       totalOutstandingBalance: 0,
-      totalPartialPayments: 0,
+      fullyUnpaidOutstandingBalance: 0,
+      partiallyPaidOutstandingBalance: 0,
+      partiallyPaidFeeRecordsCount: 0,
+      partiallyPaidFeeRecordsPercentage: 0,
       collectionRate: 0,
       overdueAmount: 0,
       dueSoonInstallmentsCount: 0,
+      dueSoonInstallmentsPercentage: 0,
       pendingPaymentsCount: 0,
+      pendingPaymentsPercentage: 0,
     });
     assert.deepEqual(overview.feeRecordStatusBreakdown, {
       pending: 0,
