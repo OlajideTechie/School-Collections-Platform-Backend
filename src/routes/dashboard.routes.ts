@@ -54,11 +54,26 @@ const router = Router();
  *                     totals:
  *                       type: object
  *                       properties:
+ *                         totalBilled:
+ *                           type: number
+ *                           description: Total amount billed across all fee records.
  *                         totalCollected:
  *                           type: number
+ *                           description: Total successful payment amount collected.
  *                         totalOutstandingBalance:
  *                           type: number
- *                         totalPartialPayments:
+ *                           description: Total remaining balance across fully unpaid and partially paid fee records.
+ *                         fullyUnpaidOutstandingBalance:
+ *                           type: number
+ *                           description: Outstanding balance for fee records with no successful payments.
+ *                         partiallyPaidOutstandingBalance:
+ *                           type: number
+ *                           description: Outstanding balance remaining on fee records with at least one successful payment.
+ *                         partiallyPaidFeeRecordsCount:
+ *                           type: integer
+ *                           minimum: 0
+ *                           description: Number of fee records that are partially paid.
+ *                         partiallyPaidFeeRecordsPercentage:
  *                           type: number
  *                           minimum: 0
  *                           maximum: 100
@@ -71,11 +86,19 @@ const router = Router();
  *                         overdueAmount:
  *                           type: number
  *                         dueSoonInstallmentsCount:
+ *                           type: integer
+ *                           minimum: 0
+ *                           description: Number of unpaid installments due within the next 7 days.
+ *                         dueSoonInstallmentsPercentage:
  *                           type: number
  *                           minimum: 0
  *                           maximum: 100
  *                           description: Percentage of unpaid installments due within the next 7 days.
  *                         pendingPaymentsCount:
+ *                           type: integer
+ *                           minimum: 0
+ *                           description: Number of pending payments.
+ *                         pendingPaymentsPercentage:
  *                           type: number
  *                           minimum: 0
  *                           maximum: 100
